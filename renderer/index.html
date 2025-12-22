@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html>
   <head>
@@ -42,12 +43,6 @@
         color: #666;
         display: none;
       }
-      #quit {
-        margin-top: 22px;
-        color: #888;
-        font-size: 12px;
-        cursor: pointer;
-      }
       #end {
         display: none;
         margin-top: 18px;
@@ -85,17 +80,12 @@
           <button data-round="60">Another 60</button>
         </div>
       </div>
-
-      <div id="quit" title="Dev escape">Quit (dev)</div>
     </div>
 
     <script>
-      console.log('[RENDERER] loaded');
-
       const choices = document.getElementById('choices');
       const timerEl = document.getElementById('timer');
       const hintEl = document.getElementById('hint');
-      const quitEl = document.getElementById('quit');
       const endEl = document.getElementById('end');
       const subtitleEl = document.getElementById('subtitle');
 
@@ -184,13 +174,6 @@
         if (b.dataset.break) startBreak(Number(b.dataset.break));
         if (b.dataset.round) startFocus(Number(b.dataset.round));
       });
-
-      // Dev escape (renderer side): Esc closes the window (works only while framed/allowed)
-      window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') window.close();
-      });
-
-      quitEl.addEventListener('click', () => window.close());
     </script>
   </body>
 </html>
