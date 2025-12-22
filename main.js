@@ -4,35 +4,50 @@ const path = require('path');
 let win;
 
 function createWindow() {
+  const indexPath = path.join(__dirname, 'renderer', 'index.html');
+
   win = new BrowserWindow({
     width: 900,
     height: 700,
 
-    // SAFE DEFAULTS (do not change yet)
-    fullscreen: false,
-    frame: true,
+    // Lock step: fullscreen + frameless (still NOT always-on-top)
+    fullscreen: true,
+    frame: false,
     alwaysOnTop: false,
-    backgroundColor: '#ffffff',
 
-    show: false, // show only after ready
+    backgroundColor: '#111111',
+    show: true,
+
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'), // ok if file exists; if not, remove this line
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true
     }
   });
 
-  win.loadFile('renderer/index.html');
+  // DevTools detached so you can see renderer errors even if UI is blank
+  win.webContents.openDevTools({ mode: 'detach' });
 
-  // Show window only when ready (prevents "blank flash" confusion)
-  win.once('ready-to-show', () => win.show());
+  console.log('[MAIN] loading:', indexPath);
 
-  // Emergency exit #1: Cmd+Shift+Q / Ctrl+Shift+Q (works even on blank UI)
-  globalShortcut.register('CommandOrControl+Shift+Q', () => {
-    app.quit();
+  win.webContents.on('did-finish-load', () => {
+    console.log('[MAIN] did-finish-load OK');
   });
 
-  // Emergency exit #2: Cmd+Shift+R / Ctrl+Shift+R to reload
+  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('[MAIN] did-fail-load', { errorCode, errorDescription, validatedURL });
+  });
+
+  win.webContents.on('render-process-gone', (event, details) => {
+    console.error('[MAIN] render-process-gone', details);
+  });
+
+  win.loadFile(indexPath).catch((err) => {
+    console.error('[MAIN] loadFile() threw:', err);
+  });
+
+  // Emergency exits (do not remove)
+  globalShortcut.register('CommandOrControl+Shift+Q', () => app.quit());
   globalShortcut.register('CommandOrControl+Shift+R', () => {
     if (win) win.reload();
   });
@@ -40,8 +55,15 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  else if (win) { win.show(); win.focus(); }
+});
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
 
-app.on('window-all-closed', () => app.quit());
+app.on('window-all-closed', () => {
+  app.quit();
+});
