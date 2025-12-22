@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Workroom</title>
+    <style>
+      body {
+        <p>INDEX.HTML LOADED</p>
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        background: #f7f7f7;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        <div id="toast" style="
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.85);
+  color: white;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  display: none;
+">
+  Not now.
+</div>
+
+      }
+      .card {
+        text-align: center;
+        padding: 28px;
+        width: 360px;
+      }
+      h1 { margin: 0 0 10px 0; font-size: 22px; font-weight: 600; }
+      p { margin: 0 0 18px 0; color: #444; }
+      .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+      button {
+        padding: 12px 14px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        background: #fff;
+        cursor: pointer;
+        border-radius: 10px;
+        min-width: 90px;
+      }
+      #timer {
+        margin-top: 20px;
+        font-size: 56px;
+        font-weight: 650;
+        letter-spacing: 1px;
+        display: none;
+      }
+      #hint {
+        margin-top: 10px;
+        color: #666;
+        display: none;
+      }
+      #quit {
+        margin-top: 22px;
+        color: #888;
+        font-size: 12px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+<body>
+  <p>THIS IS INDEX.HTML</p>
+    <div class="card">
+      <h1>Workroom</h1>
+      <p>Choose your focus duration.</p>
+
+      <div class="row" id="choices">
+        <button data-min="15">15 min</button>
+        <button data-min="30">30 min</button>
+        <button data-min="60">60 min</button>
+      </div>
+      <div id="timer">00:00</div>
+      <div id="hint">Work until the room opens.</div>
+
+      <div id="quit" title="Temporary dev escape">Quit (dev)</div>
+    </div>
+    <script>
+      const choices = document.getElementById('choices');
+      const timerEl = document.getElementById('timer');
+      const hintEl = document.getElementById('hint');
+      const quitEl = document.getElementById('quit');
+const toast = document.getElementById('toast');
+const { ipcRenderer } = require('electron');
+
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.style.display = 'block';
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => {
+    toast.style.display = 'none';
+  }, 2000);
+}
+
+ipcRenderer.on('workroom:blocked-quit', () => {
+  showToast('Not now.');
+});
+
+      let intervalId = null;
+      let secondsLeft = 0;
+
+      function renderTime() {
+        const m = Math.floor(secondsLeft / 60);
+        const s = secondsLeft % 60;
+        timerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+      }
+
+      function start(minutes) {
+        secondsLeft = minutes * 60;
+        renderTime();
+
+        choices.style.display = 'none';
+        timerEl.style.display = 'block';
+        hintEl.style.display = 'block';
+
+        intervalId = setInterval(() => {
+          secondsLeft--;
+          renderTime();
+
+          if (secondsLeft <= 0) {
+            clearInterval(intervalId);
+            // For now, just close when done.
+            window.close();
+          }
+        }, 1000);
+      }
+
+      choices.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const minutes = Number(btn.dataset.min);
+        start(minutes);
+      });
+
+      // Temporary dev escape while building
+      quitEl.addEventListener('click', () => window.close());
+    </script>
+  </body>
+</html>
