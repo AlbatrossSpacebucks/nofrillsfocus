@@ -12,7 +12,7 @@ function createWindow() {
 
     fullscreen: true,
     frame: false,
-    alwaysOnTop: false,
+    alwaysOnTop: false, // enable after load
 
     backgroundColor: '#111111',
     show: true,
@@ -28,12 +28,31 @@ function createWindow() {
     console.error('[MAIN] loadFile failed:', err);
   });
 
-  // Emergency quit
-  globalShortcut.register('CommandOrControl+Shift+Q', () => app.quit());
+  // Emergency quit (KEEP)
+  const quitOk = globalShortcut.register('CommandOrControl+Shift+Q', () => {
+    console.log('[MAIN] Quit shortcut triggered');
+    app.quit();
+  });
 
-  // Emergency reload
-  globalShortcut.register('CommandOrControl+Shift+R', () => {
-    if (win) win.reload();
+  // Emergency reload (CHANGE: Cmd+Shift+L)
+  const reloadOk = globalShortcut.register('CommandOrControl+Shift+L', () => {
+    console.log('[MAIN] Reload shortcut triggered');
+    if (win && !win.isDestroyed()) {
+      win.reload();
+    }
+  });
+
+  if (!quitOk || !reloadOk) {
+    console.error('[MAIN] Failed to register emergency exits', { quitOk, reloadOk });
+    app.quit();
+    return;
+  }
+
+  // Apply final strictness AFTER content loads
+  win.webContents.once('did-finish-load', () => {
+    if (!win || win.isDestroyed()) return;
+    win.setAlwaysOnTop(true);
+    console.log('[MAIN] alwaysOnTop enabled');
   });
 }
 
