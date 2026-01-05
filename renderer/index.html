@@ -1,179 +1,134 @@
-
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>Workroom</title>
-    <style>
-      body {
-        margin: 0;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-        background: #f7f7f7;
-        height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .card {
-        text-align: center;
-        padding: 28px;
-        width: 360px;
-      }
-      h1 { margin: 0 0 10px 0; font-size: 22px; font-weight: 600; }
-      p { margin: 0 0 18px 0; color: #444; }
-      .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-      button {
-        padding: 12px 14px;
-        font-size: 14px;
-        border: 1px solid #ccc;
-        background: #fff;
-        cursor: pointer;
-        border-radius: 10px;
-        min-width: 90px;
-      }
-      #timer {
-        margin-top: 20px;
-        font-size: 56px;
-        font-weight: 650;
-        letter-spacing: 1px;
-        display: none;
-      }
-      #hint {
-        margin-top: 10px;
-        color: #666;
-        display: none;
-      }
-      #end {
-        display: none;
-        margin-top: 18px;
-      }
-      #end p {
-        margin: 0 0 12px 0;
-        color: #444;
-      }
-    </style>
-  </head>
+<head>
+  <meta charset="UTF-8" />
+  <title>Workroom</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #ddd;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    .container { padding: 28px 34px; }
+    .status { margin: 10px 0 16px; color: #aaa; font-size: 13px; }
+    select {
+      width: 100%;
+      height: 40px;
+      background: #0f0f0f;
+      color: #ddd;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 0 10px;
+      outline: none;
+      font-size: 14px;
+    }
+    .row { margin-top: 16px; display: flex; gap: 12px; }
+    button {
+      height: 38px;
+      padding: 0 14px;
+      background: #1a1a1a;
+      color: #ddd;
+      border: 1px solid #333;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:active { transform: translateY(1px); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="font-size: 20px; margin-bottom: 8px;">Select a window.</div>
+    <div id="status" class="status">Ready.</div>
 
-  <body>
-    <div class="card">
-      <h1>Workroom</h1>
-      <p id="subtitle">Choose your focus duration.</p>
+    <select id="picker"></select>
 
-      <div class="row" id="choices">
-        <button data-min="15">15 min</button>
-        <button data-min="30">30 min</button>
-        <button data-min="60">60 min</button>
-      </div>
-
-      <div id="timer">00:00</div>
-      <div id="hint">Work until the room opens.</div>
-
-      <div id="end">
-        <p>Session complete.</p>
-        <div class="row">
-          <button data-break="5">Break 5</button>
-          <button data-break="10">Break 10</button>
-        </div>
-        <div class="row" style="margin-top:10px;">
-          <button data-round="15">Another 15</button>
-          <button data-round="30">Another 30</button>
-          <button data-round="60">Another 60</button>
-        </div>
-      </div>
+    <div class="row">
+      <button id="refresh">Refresh</button>
+      <button id="accessibility">Accessibility Settings</button>
+      <button id="confirm">Confirm</button>
     </div>
+  </div>
 
-    <script>
-      const choices = document.getElementById('choices');
-      const timerEl = document.getElementById('timer');
-      const hintEl = document.getElementById('hint');
-      const endEl = document.getElementById('end');
-      const subtitleEl = document.getElementById('subtitle');
+  <script>
+    const statusEl = document.getElementById('status');
+    const picker = document.getElementById('picker');
 
-      let intervalId = null;
-      let secondsLeft = 0;
-      let mode = 'idle'; // idle | focus | break | done
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+      console.log('[RENDER]', msg);
+    }
 
-      function stopTimer() {
-        if (intervalId) clearInterval(intervalId);
-        intervalId = null;
+    function fillOptions(items) {
+      // Hard reset
+      while (picker.firstChild) picker.removeChild(picker.firstChild);
+
+      if (!Array.isArray(items) || items.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No windows found';
+        picker.appendChild(opt);
+        return;
       }
 
-      function renderTime() {
-        const m = Math.floor(secondsLeft / 60);
-        const s = secondsLeft % 60;
-        timerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+      // Add all options
+      for (let i = 0; i < items.length; i++) {
+        const label = items[i];
+        const opt = document.createElement('option');
+        opt.value = label;
+        opt.textContent = label;
+        picker.appendChild(opt);
       }
 
-      function showChoices() {
-        choices.style.display = 'flex';
-        timerEl.style.display = 'none';
-        hintEl.style.display = 'none';
-        endEl.style.display = 'none';
-        subtitleEl.textContent = 'Choose your focus duration.';
-        mode = 'idle';
+      picker.selectedIndex = 0;
+    }
+
+    async function loadWindows() {
+      try {
+        setStatus('Loading windows...');
+        if (!window.workroom) {
+          setStatus('BRIDGE MISSING: preload not loaded');
+          return;
+        }
+
+        const res = await window.workroom.listWindows();
+        const items = (res && res.items) ? res.items : [];
+
+        console.log('[RENDER] items length:', items.length);
+        console.log('[RENDER] first items:', items.slice(0, 20));
+
+        setStatus('WINDOWS RETURNED: ' + items.length);
+        fillOptions(items);
+      } catch (e) {
+        setStatus('ERROR: ' + (e && e.message ? e.message : String(e)));
       }
+    }
 
-      function showCountdown() {
-        choices.style.display = 'none';
-        endEl.style.display = 'none';
-        timerEl.style.display = 'block';
-        hintEl.style.display = 'block';
-        subtitleEl.textContent = ' ';
+    document.getElementById('refresh').addEventListener('click', loadWindows);
+
+    document.getElementById('accessibility').addEventListener('click', async () => {
+      try {
+        setStatus('Opening Accessibility Settings...');
+        await window.workroom.openAccessibility();
+      } catch (e) {
+        setStatus('ERROR: ' + (e && e.message ? e.message : String(e)));
       }
+    });
 
-      function showEnd() {
-        hintEl.style.display = 'none';
-        endEl.style.display = 'block';
-        subtitleEl.textContent = ' ';
-        mode = 'done';
+    document.getElementById('confirm').addEventListener('click', async () => {
+      try {
+        const label = picker.value;
+        setStatus('SELECTED: ' + label);
+        await window.workroom.selectWindow(label);
+      } catch (e) {
+        setStatus('ERROR: ' + (e && e.message ? e.message : String(e)));
       }
+    });
 
-      function startCountdown(minutes, nextMode) {
-        stopTimer();
-        mode = nextMode;
-        secondsLeft = minutes * 60;
-        renderTime();
-        showCountdown();
-
-        intervalId = setInterval(() => {
-          secondsLeft--;
-          renderTime();
-
-          if (secondsLeft <= 0) {
-            stopTimer();
-
-            if (mode === 'break') {
-              showChoices();
-              return;
-            }
-
-            showEnd();
-          }
-        }, 1000);
-      }
-
-      function startFocus(minutes) {
-        startCountdown(minutes, 'focus');
-      }
-
-      function startBreak(minutes) {
-        subtitleEl.textContent = 'Break.';
-        startCountdown(minutes, 'break');
-      }
-
-      choices.addEventListener('click', (e) => {
-        const btn = e.target.closest('button');
-        if (!btn) return;
-        startFocus(Number(btn.dataset.min));
-      });
-
-      endEl.addEventListener('click', (e) => {
-        const b = e.target.closest('button');
-        if (!b) return;
-
-        if (b.dataset.break) startBreak(Number(b.dataset.break));
-        if (b.dataset.round) startFocus(Number(b.dataset.round));
-      });
-    </script>
-  </body>
+    console.log('[RENDER] Ready.');
+    setStatus('Ready.');
+    loadWindows();
+  </script>
+</body>
 </html>
