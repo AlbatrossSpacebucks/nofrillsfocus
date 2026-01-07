@@ -4,39 +4,384 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>No Frills Focus</title>
-  <meta name="description" content="A commitment enforcement tool for macOS. No accounts. No data. No servers." />
+  <meta name="description" content="A commitment enforcement tool for macOS. No AI. No accounts. No data. No servers." />
+
+  <style>
+    :root{
+      --bg: #0f1011;
+      --panel: #151618;
+      --panel2:#131416;
+      --text: #e7e7e7;
+      --muted:#b9b9b9;
+      --faint:#8f8f8f;
+      --line: #2a2c2f;
+      --line2:#202225;
+      --accent:#d9d9d9;
+      --chip:#101113;
+      --shadow: rgba(0,0,0,.35);
+      --radius: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+
+    body{
+      margin:0;
+      color: var(--text);
+      font-family: var(--mono);
+      background: var(--bg);
+      letter-spacing: .01em;
+      line-height: 1.55;
+    }
+
+    /* Subtle “cubicle fabric” texture */
+    .fabric{
+      min-height: 100%;
+      background:
+        radial-gradient(1200px 900px at 20% -20%, rgba(255,255,255,.06), transparent 60%),
+        radial-gradient(900px 700px at 110% 10%, rgba(255,255,255,.05), transparent 55%),
+        linear-gradient(180deg, rgba(255,255,255,.04), transparent 25%),
+        repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0px, rgba(255,255,255,.025) 1px, transparent 1px, transparent 6px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0px, rgba(255,255,255,.018) 1px, transparent 1px, transparent 7px),
+        var(--bg);
+      padding: 64px 18px 72px;
+    }
+
+    .wrap{
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+    }
+
+    .mark{
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,.35));
+      box-shadow: 0 10px 24px var(--shadow);
+      opacity: .9;
+    }
+
+    .brandname{
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--accent);
+      opacity: .95;
+    }
+
+    .meta{
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .chip{
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line2);
+      padding: 6px 10px;
+      border-radius: 999px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+      white-space: nowrap;
+    }
+
+    .panel{
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.05), transparent 22%),
+        var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 18px 50px var(--shadow);
+      overflow: hidden;
+    }
+
+    .panelHeader{
+      padding: 22px 22px 18px;
+      border-bottom: 1px solid var(--line2);
+      background:
+        radial-gradient(700px 140px at 10% 0%, rgba(255,255,255,.06), transparent 55%),
+        var(--panel2);
+    }
+
+    h1{
+      margin: 0 0 8px;
+      font-size: 26px;
+      letter-spacing: -0.01em;
+      color: var(--accent);
+    }
+
+    .sub{
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .panelBody{
+      padding: 18px 22px 22px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    @media (min-width: 860px){
+      .grid{
+        grid-template-columns: 1.1fr .9fr;
+        align-items: start;
+      }
+    }
+
+    .box{
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--line2);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .kicker{
+      font-size: 12px;
+      color: var(--faint);
+      margin: 0 0 10px;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+    }
+
+    p{
+      margin: 10px 0;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .muted{
+      color: var(--muted);
+    }
+
+    .list{
+      margin: 10px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .list li{
+      margin: 8px 0;
+      display:flex;
+      gap: 10px;
+      align-items: flex-start;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dot{
+      width: 8px;
+      height: 8px;
+      margin-top: 6px;
+      border-radius: 2px;
+      background: rgba(255,255,255,.45);
+      flex: 0 0 auto;
+      opacity: .75;
+    }
+
+    .callout{
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--line2);
+      background: rgba(0,0,0,.18);
+    }
+
+    .callout strong{
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .buttons{
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .btn{
+      display:inline-block;
+      text-decoration:none;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+
+    .btn:hover{ background: rgba(255,255,255,.06); }
+    .btn:active{ transform: translateY(1px); }
+
+    .btnPrimary{
+      border-color: rgba(255,255,255,.22);
+      background: rgba(255,255,255,.09);
+      color: var(--accent);
+    }
+
+    .small{
+      font-size: 12px;
+      color: var(--faint);
+      margin-top: 14px;
+    }
+
+    .footer{
+      margin-top: 18px;
+      display:flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--faint);
+      font-size: 12px;
+      opacity: .95;
+    }
+
+    .monoBlock{
+      margin-top: 10px;
+      padding: 12px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line2);
+      background: rgba(255,255,255,.02);
+      color: var(--muted);
+      font-size: 12px;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .tight { margin-top: 6px; }
+  </style>
 </head>
-<body style="font-family: system-ui, -apple-system, sans-serif; background:#f6f6f6; color:#111; padding:40px; max-width:720px; margin:auto;">
 
-  <h1>No Frills Focus</h1>
+<body>
+  <div class="fabric">
+    <div class="wrap">
 
-  <p><strong>A commitment enforcement tool for macOS.</strong></p>
+      <div class="topbar">
+        <div class="brand">
+          <div class="mark" aria-hidden="true"></div>
+          <div class="brandname">NO FRILLS FOCUS</div>
+        </div>
+        <div class="meta">
+          <div class="chip">macOS</div>
+          <div class="chip">no accounts</div>
+          <div class="chip">no data</div>
+          <div class="chip">no servers</div>
+          <div class="chip">no AI</div>
+        </div>
+      </div>
 
-  <p>
-    No Frills Focus blocks everything on your screen except the app you choose.<br>
-    It doesn’t track you, coach you, optimize you, or collect your data.<br>
-    You pick the app. It enforces the tunnel.
-  </p>
+      <div class="panel">
+        <div class="panelHeader">
+          <h1>Focus, enforced.</h1>
+          <p class="sub">A commitment enforcement tool. Not a productivity system.</p>
+        </div>
 
-  <p>
-    No AI. No accounts. No servers. No data collection.
-  </p>
+        <div class="panelBody">
+          <div class="grid">
 
-  <p>
-    <strong>Download:</strong><br>
-    (link will be added after upload)
-  </p>
+            <div class="box">
+              <div class="kicker">What it does</div>
 
-  <p>
-    <strong>Install:</strong><br>
-    1. Download and unzip.<br>
-    2. Drag <code>No Frills Focus.app</code> into <code>/Applications</code>.<br>
-    3. If macOS warns, right-click the app and choose <em>Open</em>.
-  </p>
+              <p>
+                You choose an already-open app — Pages, VS Code, Excel, a browser tab.
+              </p>
+              <p>
+                No Frills Focus puts a physical tunnel on your screen:
+                your chosen app stays visible, and everything else is blocked by solid, opaque masks.
+              </p>
 
-  <p style="margin-top:40px;font-size:12px;color:#555;">
-    This app is unsigned. macOS may show a security warning on first launch.
-  </p>
+              <div class="callout">
+                <p class="tight"><strong>It doesn’t try to improve you.</strong></p>
+                <p class="muted tight">It helps you enforce a decision you already made.</p>
+              </div>
 
+              <div class="kicker" style="margin-top:18px;">How it works</div>
+
+              <ul class="list">
+                <li><span class="dot"></span><span>Open the app you want to work in.</span></li>
+                <li><span class="dot"></span><span>Select it from the picker.</span></li>
+                <li><span class="dot"></span><span>Choose a timer (15/30/60+) or “until I’m done.”</span></li>
+                <li><span class="dot"></span><span>Exit anytime with keyboard shortcuts (visible on-screen).</span></li>
+              </ul>
+
+              <div class="monoBlock" aria-label="keyboard shortcuts">
+EXIT: Cmd + Shift + X
+QUIT: Cmd + Shift + Z
+              </div>
+
+              <p class="small">
+                No launching apps. No file access. No control over your tools.
+                Just a screen tunnel that does what you told it to do.
+              </p>
+            </div>
+
+            <div class="box">
+              <div class="kicker">What it is not</div>
+
+              <ul class="list">
+                <li><span class="dot"></span><span>Not AI. Not analytics. Not telemetry.</span></li>
+                <li><span class="dot"></span><span>Not an account. Not a subscription.</span></li>
+                <li><span class="dot"></span><span>Not a browser extension. Not a system monitor.</span></li>
+                <li><span class="dot"></span><span>Not a “focus ecosystem.”</span></li>
+              </ul>
+
+              <div class="kicker" style="margin-top:18px;">Download</div>
+
+              <p class="muted">
+                We’ll wire this up to your packaged build next.
+              </p>
+
+              <div class="buttons">
+                <a class="btn btnPrimary" href="https://github.com/AlbatrossSpacebucks/nofrillsfocus/releases/download/v0.1.0/No.Frills.Focus-0.1.0-arm64-mac.zip">Download for macOS</a>
+
+                <a class="btn" href="#" onclick="return false;">Install notes</a>
+              </div>
+
+              <p class="small">
+                Note: the app may be unsigned. macOS can warn on first launch.
+                That’s normal for indie utilities.
+              </p>
+
+              <div class="kicker" style="margin-top:18px;">One-sentence model</div>
+              <p class="muted">
+                No Frills Focus enforces where you already chose to work by physically blocking everything else.
+              </p>
+            </div>
+
+          </div>
+
+          <div class="footer">
+            <div>nofrillsfocus.com</div>
+            <div>Built to be boring. Built to be used.</div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
 </body>
 </html>
