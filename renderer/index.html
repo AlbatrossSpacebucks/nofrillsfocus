@@ -1,134 +1,106 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Workroom</title>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>No Frills Focus</title>
   <style>
-    body {
+    html, body {
+      height: 100%;
       margin: 0;
-      background: #111;
-      color: #ddd;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background:#9b9b9b;
+      color: rgba(255,255,255,.88);
+      font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      monospace;
     }
-    .container { padding: 28px 34px; }
-    .status { margin: 10px 0 16px; color: #aaa; font-size: 13px; }
-    select {
-      width: 100%;
-      height: 40px;
-      background: #0f0f0f;
-      color: #ddd;
-      border: 1px solid #333;
-      border-radius: 6px;
-      padding: 0 10px;
-      outline: none;
-      font-size: 14px;
+    .wrap { height:100%; display:grid; place-items:center; padding:24px; }
+    .card {
+      width:min(720px,92vw);
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      padding:22px;
+      box-shadow:0 10px 30px rgba(0,0,0,.5);
     }
-    .row { margin-top: 16px; display: flex; gap: 12px; }
-    button {
-      height: 38px;
-      padding: 0 14px;
-      background: #1a1a1a;
-      color: #ddd;
-      border: 1px solid #333;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 14px;
+    .title {
+      font-size:18px;
+      margin:0 0 10px;
+      letter-spacing:0.2px;
     }
-    button:active { transform: translateY(1px); }
+    label { display:block; font-size:13px; color:rgba(255,255,255,.72); margin:12px 0 8px; }
+    select, button {
+      width:100%;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.25);
+      color:rgba(255,255,255,.9);
+      padding:12px;
+      font-size:14px;
+      outline:none;
+    }
+    button { margin-top:14px; background:rgba(255,255,255,.06); cursor:pointer; }
+    button:hover { background:rgb(60, 58, 58); }
+
+    .statusBox {
+      margin-top:12px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.03);
+      padding:10px 12px;
+    }
+    .status {
+      font-size:13px;
+      color:rgba(60, 58, 58);
+      line-height:1.35;
+      min-height:22px;
+      white-space:pre-wrap;
+    }
+    .hint {
+      margin-top:8px;
+      font-size:12px;
+      color:rgba(255,255,255,.58);
+      line-height:1.35;
+      white-space:pre-wrap;
+    }
+    .hint:empty { display:none; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div style="font-size: 20px; margin-bottom: 8px;">Select a window.</div>
-    <div id="status" class="status">Ready.</div>
+  <div class="wrap">
+    <div class="card">
+      <h1 class="title">No Frills Focus</h1>
 
-    <select id="picker"></select>
+      <label for="appSelect">What do you need to focus on today?</label>
+      <select id="appSelect">
+        <option value="">Loading…</option>
+      </select>
 
-    <div class="row">
-      <button id="refresh">Refresh</button>
-      <button id="accessibility">Accessibility Settings</button>
-      <button id="confirm">Confirm</button>
+      <label for="durationSelect">Session length:</label>
+  
+      <select id="durationSelect">
+        <option value="15">15 minutes</option>
+        <option value="30">30 minutes</option>
+        <option value="60">60 minutes</option>
+        <option value="done">Until I’m done</option>
+      </select>
+
+      <button id="confirmBtn">Get started</button>
+
+      <div class="statusBox">
+        <div class="status" id="status"></div>
+        <div class="hint" id="hint"></div>
+      </div>
     </div>
   </div>
 
-  <script>
-    const statusEl = document.getElementById('status');
-    const picker = document.getElementById('picker');
-
-    function setStatus(msg) {
-      statusEl.textContent = msg;
-      console.log('[RENDER]', msg);
-    }
-
-    function fillOptions(items) {
-      // Hard reset
-      while (picker.firstChild) picker.removeChild(picker.firstChild);
-
-      if (!Array.isArray(items) || items.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'No windows found';
-        picker.appendChild(opt);
-        return;
-      }
-
-      // Add all options
-      for (let i = 0; i < items.length; i++) {
-        const label = items[i];
-        const opt = document.createElement('option');
-        opt.value = label;
-        opt.textContent = label;
-        picker.appendChild(opt);
-      }
-
-      picker.selectedIndex = 0;
-    }
-
-    async function loadWindows() {
-      try {
-        setStatus('Loading windows...');
-        if (!window.workroom) {
-          setStatus('BRIDGE MISSING: preload not loaded');
-          return;
-        }
-
-        const res = await window.workroom.listWindows();
-        const items = (res && res.items) ? res.items : [];
-
-        console.log('[RENDER] items length:', items.length);
-        console.log('[RENDER] first items:', items.slice(0, 20));
-
-        setStatus('WINDOWS RETURNED: ' + items.length);
-        fillOptions(items);
-      } catch (e) {
-        setStatus('ERROR: ' + (e && e.message ? e.message : String(e)));
-      }
-    }
-
-    document.getElementById('refresh').addEventListener('click', loadWindows);
-
-    document.getElementById('accessibility').addEventListener('click', async () => {
-      try {
-        setStatus('Opening Accessibility Settings...');
-        await window.workroom.openAccessibility();
-      } catch (e) {
-        setStatus('ERROR: ' + (e && e.message ? e.message : String(e)));
-      }
-    });
-
-    document.getElementById('confirm').addEventListener('click', async () => {
-      try {
-        const label = picker.value;
-        setStatus('SELECTED: ' + label);
-        await window.workroom.selectWindow(label);
-      } catch (e) {
-        setStatus('ERROR: ' + (e && e.message ? e.message : String(e)));
-      }
-    });
-
-    console.log('[RENDER] Ready.');
-    setStatus('Ready.');
-    loadWindows();
-  </script>
+  <script src="./renderer.js"></script>
 </body>
 </html>

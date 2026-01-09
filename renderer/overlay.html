@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Overlay</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+      }
+
+      :root {
+        --aperture-w: 72vw;
+        --aperture-h: 74vh;
+        --radius: 28px;
+        --scrim: rgba(0, 0, 0, 0.78);
+        --edge: rgba(255, 255, 255, 0.10);
+      }
+
+      .aperture {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        width: var(--aperture-w);
+        height: var(--aperture-h);
+        transform: translate(-50%, -50%);
+        border-radius: var(--radius);
+
+        /* Outside = black. Inside = transparent. */
+        box-shadow: 0 0 0 200vmax var(--scrim);
+
+        /* Intentional edge */
+        outline: 1px solid var(--edge);
+        outline-offset: 0px;
+
+        background: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="aperture"></div>
+  </body>
+</html>

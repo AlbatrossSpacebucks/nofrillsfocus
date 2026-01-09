@@ -1,11 +1,32 @@
 {
-  "name": "workroom",
-  "version": "0.0.1",
+  "name": "no-frills-focus",
+  "version": "0.1.0",
+  "description": "A commitment enforcement tool for macOS",
   "main": "main.js",
+  "author": "No Frills Focus",
+  "license": "MIT",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "pack:mac": "electron-builder --mac --dir",
+    "dist:mac": "electron-builder --mac"
   },
   "devDependencies": {
-    "electron": "^39.2.7"
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.nofrillsfocus.app",
+    "productName": "No Frills Focus",
+    "files": [
+      "**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    }
   }
 }
