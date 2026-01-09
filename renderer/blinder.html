@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blinders</title>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: rgba(0,0,0,0); /* transparent window, we paint black layer */
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .curtain {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.94);
+      display: grid;
+      place-items: start center;
+      padding-top: 28px;
+      pointer-events: none; /* click-through */
+    }
+    .msg {
+      font-size: 13px;
+      color: rgba(255,255,255,0.55);
+      letter-spacing: 0.2px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="curtain">
+    <div class="msg">Blinders on.</div>
+  </div>
+</body>
+</html>
