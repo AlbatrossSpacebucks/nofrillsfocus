@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+    }
+    svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+  </style>
+</head>
+<body>
+  <svg id="svg"></svg>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const corner = (params.get("corner") || "tl").toLowerCase();
+    const c = params.get("c") || "#DEDEDE";
+    const r = Number(params.get("r") || "10");
+
+    const svg = document.getElementById("svg");
+    const size = 16;
+    
+    svg.setAttribute("width", size);
+    svg.setAttribute("height", size);
+    svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("fill", c);
+
+    // Draw quarter-circle arc that fills the wedge where the app's corner curves inward
+    // Each corner draws from its edge inward to cover the rounded corner gap
+    if (corner === "tl") {
+      // Top-left: arc from (0,r) to (r,0)
+      path.setAttribute("d", `M 0 0 L ${r} 0 A ${r} ${r} 0 0 1 0 ${r} Z`);
+    } else if (corner === "tr") {
+      // Top-right: arc from (size-r,0) to (size,r)
+      path.setAttribute("d", `M ${size} 0 L ${size} ${r} A ${r} ${r} 0 0 1 ${size - r} 0 Z`);
+    } else if (corner === "bl") {
+      // Bottom-left: arc from (0,size-r) to (r,size)
+      path.setAttribute("d", `M 0 ${size} L 0 ${size - r} A ${r} ${r} 0 0 1 ${r} ${size} Z`);
+    } else if (corner === "br") {
+      // Bottom-right: arc from (size,size-r) to (size-r,size)
+      path.setAttribute("d", `M ${size} ${size} L ${size - r} ${size} A ${r} ${r} 0 0 1 ${size} ${size - r} Z`);
+    }
+
+    svg.appendChild(path);
+  </script>
+</body>
+</html>
+
