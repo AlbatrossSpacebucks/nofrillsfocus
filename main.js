@@ -5,9 +5,15 @@ const { execFile } = require("child_process");
 
 let pickerWin = null;
 let maskWins = [];
+let cornerWins = null;
 let session = null;
 // Remember previous menu-bar autohide state so we can restore it.
 let menuBarPrev = null;
+
+const ENABLE_CORNER_PATCHES = false;  // easy toggle
+const CORNER_PATCH_PX = 16;          // start with 14 or 16; 16 recommended
+const CORNER_RADIUS_PX = 10;         // tweak only if needed
+const MASK_COLOR = "#DEDEDE";
 
 let pinInterval = null;
 let sessionTimer = null;
@@ -37,6 +43,21 @@ function runOSA(lines) {
       resolve((stdout || "").trim());
     });
   });
+}
+
+/**
+ * Get the name of the frontmost (active) app on macOS.
+ * Returns app name string or null if unable to determine.
+ */
+async function getFrontmostAppName() {
+  try {
+    const out = await runOSA(
+      'tell application "System Events" to get name of first application process whose frontmost is true'
+    );
+    return (out || "").trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -283,6 +304,107 @@ function computeOpening(bounds) {
 }
 
 /**
+ * Destroy corner patch windows.
+ */
+function destroyCornerPatches() {
+  if (!cornerWins) return;
+  try {
+    for (const w of cornerWins) {
+      try { w.close(); } catch {}
+    }
+  } finally {
+    cornerWins = null;
+  }
+}
+
+/**
+ * Create corner patch windows to cover rounded corner triangles.
+ */
+function createCornerPatches(opening) {
+  if (!ENABLE_CORNER_PATCHES) return;
+
+  destroyCornerPatches();
+
+  const patch = CORNER_PATCH_PX;
+
+  const mk = (corner, x, y) => {
+    const w = new BrowserWindow({
+      x, y,
+      width: patch,
+      height: patch,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      focusable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      backgroundColor: "#00000000",
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true
+      }
+    });
+
+    // Critical: never take focus or intercept clicks
+    try { w.setIgnoreMouseEvents(true, { forward: true }); } catch {}
+
+    const url = `file://${path.join(__dirname, "renderer", "corner.html")}?corner=${corner}&c=${encodeURIComponent(MASK_COLOR)}&r=${CORNER_RADIUS_PX}`;
+    w.loadURL(url);
+
+    // Match mask tier
+    try { w.setAlwaysOnTop(true, "screen-saver"); } catch {}
+
+    w.once("ready-to-show", () => {
+      try { w.showInactive(); } catch {}
+    });
+
+    return w;
+  };
+
+  const x = opening.x;
+  const y = opening.y;
+  const ow = opening.w;
+  const oh = opening.h;
+
+  cornerWins = [
+    mk("tl", x, y),
+    mk("tr", x + ow - patch, y),
+    mk("bl", x, y + oh - patch),
+    mk("br", x + ow - patch, y + oh - patch),
+  ];
+
+  log(`[CORNERS] created ${cornerWins.length} patches`);
+}
+
+/**
+ * Update corner patch positions after opening changes.
+ */
+function updateCornerPatches(opening) {
+  if (!ENABLE_CORNER_PATCHES) return;
+  if (!cornerWins || cornerWins.length !== 4) return;
+
+  const patch = CORNER_PATCH_PX;
+
+  const positions = [
+    { x: opening.x,                    y: opening.y },                           // tl
+    { x: opening.x + opening.w - patch, y: opening.y },                          // tr
+    { x: opening.x,                    y: opening.y + opening.h - patch },       // bl
+    { x: opening.x + opening.w - patch, y: opening.y + opening.h - patch }       // br
+  ];
+
+  for (let i = 0; i < 4; i++) {
+    try {
+      cornerWins[i].setBounds({ ...positions[i], width: patch, height: patch }, false);
+      cornerWins[i].setAlwaysOnTop(true, "screen-saver");
+      try { cornerWins[i].setIgnoreMouseEvents(true, { forward: true }); } catch {}
+    } catch {}
+  }
+}
+
+/**
  * Destroy all masks.
  */
 function destroyMaskWindows() {
@@ -306,7 +428,9 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
   const full = screen.getPrimaryDisplay().bounds;
 
   // Small overlap for seam removal (do not exceed 3px)
-  const OL = 3;
+  const OL = 2;
+  const EDGE = 4;     // 2–6px works; 4 is safe
+  const TOP_JOIN = 4; // overlap between cap and topMask
 
   const maskHTML = ({ showExit = false } = {}) => {
     const exitText = "EXIT: Cmd+Shift+X    QUIT: Cmd+Shift+Z";
@@ -324,27 +448,8 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
               height: 100%;
               overflow: hidden;
 
-              /* Base fabric tone */
-              background: #4a4a4a;
-
-              /* Subtle cubicle weave */
-              background-image:
-                linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.015)),
-                repeating-linear-gradient(
-                  0deg,
-                  rgba(255,255,255,0.035) 0px,
-                  rgba(255,255,255,0.035) 1px,
-                  rgba(0,0,0,0.00) 1px,
-                  rgba(0,0,0,0.00) 6px
-                ),
-                repeating-linear-gradient(
-                  90deg,
-                  rgba(255,255,255,0.020) 0px,
-                  rgba(255,255,255,0.020) 1px,
-                  rgba(0,0,0,0.00) 1px,
-                  rgba(0,0,0,0.00) 9px
-                );
-              background-blend-mode: multiply;
+              /* Base flat tone */
+              background: #dedede;
             }
 
             body::before {
@@ -355,13 +460,12 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
               background-image:
                 repeating-linear-gradient(
                   45deg,
-                  rgba(255,255,255,0.010) 0px,
-                  rgba(255,255,255,0.010) 1px,
+                  rgba(255,255,255,0.02) 0px,
+                  rgba(255,255,255,0.02) 1px,
                   rgba(0,0,0,0.00) 1px,
                   rgba(0,0,0,0.00) 4px
                 );
-              opacity: 0.35;
-              mix-blend-mode: overlay;
+              opacity: 0.08;
             }
 
             .exitSign {
@@ -402,7 +506,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
       height: bounds.height,
       frame: false,
       transparent: false,
-      backgroundColor: "#4a4a4a",
+      backgroundColor: "#dedede",
       resizable: false,
       movable: false,
       minimizable: false,
@@ -424,7 +528,10 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
     w.setFocusable(false);
     w.setAlwaysOnTop(true, "status");
     w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    try { w.setIgnoreMouseEvents(true, { forward: true }); } catch {}
+    try { w.setIgnoreMouseEvents(false); } catch {}
+    
+    // Ensure mask never becomes key window
+    w.on('focus', () => w.blur());
 
     // Helper: macOS compositor sometimes needs repeated assertions.
     const assertTopmost = () => {
@@ -471,7 +578,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
   });
 
   // TOP MASK: covers everything above opening (below the cap)
-  const topMaskY = full.y + CAP_H;
+  const topMaskY = full.y + CAP_H - TOP_JOIN; // overlap upward into the cap by 4px
   const topMaskH = Math.max(0, opening.y - topMaskY) + OL; // small overlap down
   const topMask = makeMask({
     x: full.x,
@@ -498,7 +605,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
   const left = makeMask({
     x: full.x,
     y: leftY,
-    width: Math.max(0, opening.x - full.x),
+    width: Math.max(0, opening.x - full.x) + OL, // add horizontal overlap
     height: leftH,
   });
 
@@ -507,9 +614,9 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
   const rightY = opening.y - OL;
   const rightH = opening.h + (OL * 2);
   const right = makeMask({
-    x: rightX,
+    x: rightX - OL, // shift left slightly
     y: rightY,
-    width: Math.max(0, (full.x + full.width) - rightX),
+    width: Math.max(0, (full.x + full.width) - rightX) + OL,
     height: rightH,
   });
 
@@ -613,7 +720,13 @@ async function startSession(selectedApp, durationMin) {
   if (watchdogInterval) { clearInterval(watchdogInterval); watchdogInterval = null; }
 
   const dur = normalizeDuration(durationMin);
-  session = { selectedApp, durationMin, startedAt: Date.now(), mode: dur.mode };
+  session = { 
+    selectedApp, 
+    durationMin, 
+    startedAt: Date.now(), 
+    mode: dur.mode,
+    targetBounds: null  // will be set after computing opening
+  };
 
   log(`[SESSION] start: selectedApp="${selectedApp}" durationMin=${durationMin} mode=${dur.mode}`);
 
@@ -635,6 +748,9 @@ async function startSession(selectedApp, durationMin) {
 
   // Clamp height to stay on-screen.
   targetRect.h = Math.min(targetRect.h, (full.y + full.height) - targetRect.y);
+  
+  // Store target bounds for snapback
+  session.targetBounds = targetRect;
 
   // Hide picker BEFORE any masking so the target app can become truly frontmost.
   if (pickerWin) pickerWin.hide();
@@ -697,13 +813,21 @@ async function startSession(selectedApp, durationMin) {
     return { ok: false, error: "mask-failed" };
   }
 
+  try {
+    // Create corner patches to cover rounded corner artifacts
+    createCornerPatches(opening);
+  } catch (e) {
+    log("[SESSION] warning: corner patch creation failed:", e?.message || e);
+  }
+
   // Immediately re-activate the selected app and re-pin its front window.
   // This restores the snapback behavior and ensures the app remains frontmost
   // above the masks after the masks have been placed at screen-saver level.
   try {
     await activateApp(selectedApp);
-    // Use the measured opening bounds (without safety pad) for re-pinning
+
     const repinRect = measured || opening;
+
     await setFrontWindowBounds(selectedApp, repinRect);
   } catch (e) {
     log("[SESSION] warning: re-activate/re-pin failed:", e?.message || e);
@@ -741,10 +865,9 @@ async function startSession(selectedApp, durationMin) {
         return;
       }
 
-      // Re-measure and re-pin during watchdog checks
-      const currentBounds = await getFrontWindowBounds(session.selectedApp);
-      if (currentBounds) {
-        await setFrontWindowBounds(session.selectedApp, currentBounds);
+      // SNAPBACK: pin window to the target position (snaps back if user dragged it)
+      if (session.targetBounds) {
+        await setFrontWindowBounds(session.selectedApp, session.targetBounds);
       }
       pinFailCount = 0;
     } catch (e) {
@@ -783,6 +906,7 @@ async function endSession(reason = "manual") {
 
   pinFailCount = 0;
 
+  destroyCornerPatches();
   destroyMaskWindows();
 
   if (pickerWin) {
@@ -818,6 +942,7 @@ async function emergencyQuit() {
   session = null;
   pinFailCount = 0;
 
+  try { destroyCornerPatches(); } catch {}
   try { destroyMaskWindows(); } catch {}
   try { if (pickerWin) pickerWin.destroy(); } catch {}
 
@@ -927,6 +1052,7 @@ app.on("will-quit", () => {
   sessionTimer = null;
   watchdogInterval = null;
 
+  try { destroyCornerPatches(); } catch {}
   try { destroyMaskWindows(); } catch {}
 });
 
