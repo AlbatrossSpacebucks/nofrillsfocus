@@ -212,6 +212,54 @@ async function setFrontWindowBounds(appName, rect) {
 }
 
 /**
+ * Measure the actual bounds of the front window (including titlebar/traffic lights).
+ * Returns {x, y, w, h} or null if unable to measure.
+ */
+async function getFrontWindowBounds(appName) {
+  if (!appName) return null;
+
+  const script = `
+    tell application "System Events"
+      if not (exists application process "${appName}") then return "NOAPP"
+      tell application process "${appName}"
+        if (count of windows) is 0 then return "NOWIN"
+        
+        set pos to position of window 1
+        set sz to size of window 1
+        
+        set x to item 1 of pos
+        set y to item 2 of pos
+        set w to item 1 of sz
+        set h to item 2 of sz
+        
+        return (x as text) & "," & (y as text) & "," & (w as text) & "," & (h as text)
+      end tell
+    end tell
+  `;
+
+  try {
+    const out = await runOSA(script);
+    if (out === "NOAPP" || out === "NOWIN") {
+      log(`[AX] getFrontWindowBounds failed: ${out}`);
+      return null;
+    }
+
+    const parts = out.split(",").map((s) => parseInt(s.trim(), 10));
+    if (parts.length !== 4 || parts.some(isNaN)) {
+      log(`[AX] getFrontWindowBounds parse error: ${out}`);
+      return null;
+    }
+
+    const measured = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+    log(`[AX] front window bounds: x=${measured.x} y=${measured.y} w=${measured.w} h=${measured.h}`);
+    return measured;
+  } catch (e) {
+    log(`[AX] getFrontWindowBounds error: ${e?.message || e}`);
+    return null;
+  }
+}
+
+/**
  * Compute opening rect (the tunnel) from workArea bounds.
  * Returns {x,y,w,h}
  *
@@ -219,15 +267,16 @@ async function setFrontWindowBounds(appName, rect) {
  * - Centered horizontally
  * - Positioned based on workArea
  */
-function computeOpening(workArea) {
-  const openW = Math.floor(workArea.width * 0.55);
-  const openH = Math.floor(workArea.height * 0.76);
+function computeOpening(bounds) {
+  const openW = Math.floor(bounds.width * 0.55);
+  const openH = Math.floor(bounds.height * 0.76);
 
-  const x = Math.floor(workArea.x + (workArea.width - openW) / 2);
+  const x = Math.floor(bounds.x + (bounds.width - openW) / 2);
 
-  const TOP_MARGIN = 80;
-  const usableY = workArea.y + TOP_MARGIN;
-  const usableH = workArea.height - TOP_MARGIN;
+  const TOP_MARGIN = 80; // allowed tuning range 60–120 if needed
+  const usableY = bounds.y + TOP_MARGIN;
+  const usableH = bounds.height - TOP_MARGIN;
+
   const y = Math.floor(usableY + (usableH - openH) / 2);
 
   return { x, y, w: openW, h: openH };
@@ -256,11 +305,8 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
   // This is the only way to reliably cover menu bar / dock / notch weirdness.
   const full = screen.getPrimaryDisplay().bounds;
 
-  // Seam hiding without cutting into the tunnel opening
-  const seam = 22; // keeps joins from showing at edges
-
-  // Optional extra insurance to prevent 1–2px slivers (Retina rounding)
-  const OVERSCAN = 60;
+  // Small overlap for seam removal (do not exceed 3px)
+  const OL = 3;
 
   const maskHTML = ({ showExit = false } = {}) => {
     const exitText = "EXIT: Cmd+Shift+X    QUIT: Cmd+Shift+Z";
@@ -415,51 +461,66 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
     return w;
   }
 
-  // TOP CAP: tiny 6px mask at the very top to kill the macOS sliver
-  const cap = makeMask({
+  // TOP CAP: tiny mask to cover menu bar sliver
+  const CAP_H = 6;
+  const topCap = makeMask({
     x: full.x,
     y: full.y,
     width: full.width,
-    height: 6,
+    height: CAP_H,
   });
-  // Cap uses same level as other masks
 
-  // TOP: cover from top of screen to opening edge
-  const top = makeMask({
+  // TOP MASK: covers everything above opening (below the cap)
+  const topMaskY = full.y + CAP_H;
+  const topMaskH = Math.max(0, opening.y - topMaskY) + OL; // small overlap down
+  const topMask = makeMask({
     x: full.x,
-    y: full.y,
+    y: topMaskY,
     width: full.width,
-    height: opening.y - full.y,
+    height: topMaskH,
   });
 
-  // BOTTOM: cover from opening bottom to bottom of screen
+  // BOTTOM: cover everything below opening
+  const bottomY = opening.y + opening.h;
   const bottom = makeMask(
     {
       x: full.x,
-      y: opening.y + opening.h,
+      y: bottomY - OL, // small overlap up
       width: full.width,
-      height: (full.y + full.height) - (opening.y + opening.h),
+      height: Math.max(0, (full.y + full.height) - bottomY) + OL,
     },
     { showExit: true }
   );
 
-  // LEFT: cover from opening top to opening bottom on the left
+  // LEFT: cover left of opening, start at opening.y (no vertical climb)
+  const leftY = opening.y - OL;
+  const leftH = opening.h + (OL * 2);
   const left = makeMask({
     x: full.x,
-    y: opening.y,
-    width: opening.x - full.x,
-    height: opening.h,
+    y: leftY,
+    width: Math.max(0, opening.x - full.x),
+    height: leftH,
   });
 
-  // RIGHT: cover from opening top to opening bottom on the right
+  // RIGHT: cover right of opening, start at opening.y (no vertical climb)
+  const rightX = opening.x + opening.w;
+  const rightY = opening.y - OL;
+  const rightH = opening.h + (OL * 2);
   const right = makeMask({
-    x: opening.x + opening.w,
-    y: opening.y,
-    width: (full.x + full.width) - (opening.x + opening.w),
-    height: opening.h,
+    x: rightX,
+    y: rightY,
+    width: Math.max(0, (full.x + full.width) - rightX),
+    height: rightH,
   });
 
-  maskWins = [cap, top, bottom, left, right];
+  maskWins = [topCap, topMask, bottom, left, right];
+
+  // Debug logs
+  log("[OPENING]", opening);
+  log("[MASK] topCap", { x: full.x, y: full.y, w: full.width, h: CAP_H });
+  log("[MASK] topMask", { y: topMaskY, h: topMaskH });
+  log("[MASK] left", { y: leftY, h: leftH });
+  log("[MASK] right", { y: rightY, h: rightH });
 
   log("[BLINDERS] full display bounds:", full);
   log("[BLINDERS] opening:", {
@@ -570,17 +631,48 @@ async function startSession(selectedApp, durationMin) {
   const work = display.workArea;
 
   // Compute opening from workArea (includes top margin and vertical centering).
-  let opening = computeOpening(work);
+  let targetRect = computeOpening(work);
 
   // Clamp height to stay on-screen.
-  opening.h = Math.min(opening.h, (full.y + full.height) - opening.y);
+  targetRect.h = Math.min(targetRect.h, (full.y + full.height) - targetRect.y);
 
   // Hide picker BEFORE any masking so the target app can become truly frontmost.
   if (pickerWin) pickerWin.hide();
 
   // IMPORTANT: Pin the target window FIRST, before masks exist.
   // (Masks at screen-saver level can interfere with frontmost/AX behavior.)
-  await setFrontWindowBounds(selectedApp, opening);
+  log(`[DEBUG] requested bounds: x=${targetRect.x} y=${targetRect.y} w=${targetRect.w} h=${targetRect.h}`);
+  await setFrontWindowBounds(selectedApp, targetRect);
+
+  // Give macOS a compositor beat to apply the window changes
+  await new Promise((r) => setTimeout(r, 150));
+
+  // MEASURE REAL BOUNDS: Get the actual window position/size (includes titlebar/traffic lights)
+  const measured1 = await getFrontWindowBounds(selectedApp);
+  if (measured1) {
+    log(`[AX] measured1: x=${measured1.x} y=${measured1.y} w=${measured1.w} h=${measured1.h}`);
+  }
+
+  // Give another settle tick and re-measure
+  await new Promise((r) => setTimeout(r, 100));
+  const measured2 = await getFrontWindowBounds(selectedApp);
+  
+  let opening;
+  if (measured2) {
+    log(`[AX] measured2: x=${measured2.x} y=${measured2.y} w=${measured2.w} h=${measured2.h}`);
+    // Use measured bounds with tiny ±2px pad to avoid 1px slivers from rounding
+    opening = {
+      x: measured2.x - 2,
+      y: measured2.y - 2,
+      w: measured2.w + 4,
+      h: measured2.h + 4
+    };
+    log(`[OPENING] final opening used: x=${opening.x} y=${opening.y} w=${opening.w} h=${opening.h}`);
+  } else {
+    // Fallback to computed bounds if measurement failed
+    log(`[DEBUG] measurement failed, using computed bounds`);
+    opening = targetRect;
+  }
 
   // Toggle macOS auto-hide menu bar so the masks reliably 'close' the menu bar.
   try {
@@ -610,12 +702,14 @@ async function startSession(selectedApp, durationMin) {
   // above the masks after the masks have been placed at screen-saver level.
   try {
     await activateApp(selectedApp);
-    await setFrontWindowBounds(selectedApp, opening);
+    // Use the measured opening bounds (without safety pad) for re-pinning
+    const repinRect = measured || opening;
+    await setFrontWindowBounds(selectedApp, repinRect);
   } catch (e) {
     log("[SESSION] warning: re-activate/re-pin failed:", e?.message || e);
   }
 
-  if (!maskWins || maskWins.length !== 5) {
+  if (!maskWins || maskWins.length < 5) {
     log(`[SESSION] abort: masks not present (count=${maskWins?.length || 0})`);
     try { destroyMaskWindows(); } catch {}
     session = null;
@@ -625,7 +719,7 @@ async function startSession(selectedApp, durationMin) {
   watchdogInterval = setInterval(async () => {
     try {
       if (!session) return;
-      if (!maskWins || maskWins.length !== 5) {
+      if (!maskWins || maskWins.length < 5) {
         log(`[WATCHDOG] mask invariant failed (count=${maskWins?.length || 0}) -> teardown`);
         await endSession("watchdog");
         return;
@@ -647,7 +741,11 @@ async function startSession(selectedApp, durationMin) {
         return;
       }
 
-      await setFrontWindowBounds(session.selectedApp, opening);
+      // Re-measure and re-pin during watchdog checks
+      const currentBounds = await getFrontWindowBounds(session.selectedApp);
+      if (currentBounds) {
+        await setFrontWindowBounds(session.selectedApp, currentBounds);
+      }
       pinFailCount = 0;
     } catch (e) {
       pinFailCount++;
