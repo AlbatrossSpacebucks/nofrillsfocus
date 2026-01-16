@@ -826,7 +826,7 @@ async function startSession(selectedApp, durationMin) {
   try {
     await activateApp(selectedApp);
 
-    const repinRect = measured || opening;
+    const repinRect = measured2 || opening;
 
     await setFrontWindowBounds(selectedApp, repinRect);
   } catch (e) {
@@ -866,8 +866,9 @@ async function startSession(selectedApp, durationMin) {
       }
 
       // SNAPBACK: pin window to the target position (snaps back if user dragged it)
-      if (session.targetBounds) {
-        await setFrontWindowBounds(session.selectedApp, session.targetBounds);
+      const s = session;
+      if (s?.targetBounds) {
+        await setFrontWindowBounds(s.selectedApp, s.targetBounds);
       }
       pinFailCount = 0;
     } catch (e) {
