@@ -9,3 +9,5 @@ dist/
 dmg/
 *.dmg
 .DS_Store
+build/
+*.BACKUP*
