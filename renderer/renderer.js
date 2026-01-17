@@ -31,6 +31,17 @@
     );
   }
 
+  function formatStartError(result, selectedApp) {
+    const code = String(result?.code || "");
+    const msg = String(result?.message || "");
+
+    if (code === "ACCESSIBILITY_DENIED" || msg === "ACCESSIBILITY_DENIED") {
+      return 'Unable to start.\nEnable Accessibility for "No Frills Focus" in System Settings → Privacy & Security → Accessibility, then try again.';
+    }
+
+    return `Couldn't start.\nOpen ${selectedApp} (with at least one window), then try again.`;
+  }
+
   async function loadApps() {
     setStatus("Loading apps…");
     setHint("");
@@ -119,14 +130,12 @@
         return;
       }
 
-      setStatus(
-        `Couldn’t start.\nMake sure ${selectedApp} is open, then try again.`
-      );
+      const errorMsg = formatStartError(res, selectedApp);
+      setStatus(errorMsg);
       setHint("");
     } catch {
-      setStatus(
-        `Couldn’t start.\nMake sure ${selectedApp} is open, then try again.`
-      );
+      const errorMsg = formatStartError({}, selectedApp);
+      setStatus(errorMsg);
       setHint("");
     }
   }

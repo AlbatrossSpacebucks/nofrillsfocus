@@ -33,4 +33,7 @@ contextBridge.exposeInMainWorld("workroom", {
 
   // NEW: returns last end reason once, then clears it
   getLastEndReason: async () => ipcRenderer.invoke("session:lastEndReason"),
+
+  // Check accessibility permission
+  checkAccessibility: async () => ipcRenderer.invoke("accessibility:check"),
 });

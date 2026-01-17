@@ -1,7 +1,17 @@
+require("fs").appendFileSync("/tmp/nff_boot.log", `[${new Date().toISOString()}] BOOT main.js loaded\n`);
 // main.js
+console.log("NFF_BUILD_FINGERPRINT", "2026-01-16_1645_LOCAL");
+
 const path = require("path");
 const { app, BrowserWindow, ipcMain, globalShortcut, screen } = require("electron");
 const { execFile } = require("child_process");
+const fs = require("fs");
+
+function nffLog(...args) {
+  try {
+    fs.appendFileSync("/tmp/nff.log", `[${new Date().toISOString()}] ${args.join(" ")}\n`);
+  } catch (_) {}
+}
 
 let pickerWin = null;
 let maskWins = [];
@@ -28,8 +38,19 @@ const DEBUG = {
   showPickerOnBoot: process.env.WORKROOM_SHOW_PICKER === "1",
 };
 
+let permissionModalWin = null;
+
 function log(...args) {
   console.log(...args);
+}
+
+function isAccessibilityDenied(errText = "") {
+  return (
+    errText.includes("osascript is not allowed assistive access") ||
+    errText.includes("(-25211)") ||
+    errText.includes("Not authorized to send Apple events") ||
+    errText.includes("1743")
+  );
 }
 
 /**
@@ -38,8 +59,22 @@ function log(...args) {
 function runOSA(lines) {
   return new Promise((resolve, reject) => {
     const script = Array.isArray(lines) ? lines.join("\n") : String(lines);
+    const startTime = Date.now();
+    nffLog(`[OSA] starting: ${script.substring(0, 80)}`);
+    
+    const timeout = setTimeout(() => {
+      nffLog(`[OSA] TIMEOUT after ${Date.now() - startTime}ms: ${script.substring(0, 80)}`);
+      reject(new Error("osascript timeout"));
+    }, 5000);
+    
     execFile("/usr/bin/osascript", ["-e", script], (err, stdout, stderr) => {
-      if (err) return reject(new Error(stderr || err.message));
+      clearTimeout(timeout);
+      const elapsed = Date.now() - startTime;
+      if (err) {
+        nffLog(`[OSA] ERROR (${elapsed}ms) exit=${err.code} stderr=${stderr}`);
+        return reject(new Error(stderr || err.message));
+      }
+      nffLog(`[OSA] OK (${elapsed}ms) stdout=${(stdout || "").trim().substring(0, 100)}`);
       resolve((stdout || "").trim());
     });
   });
@@ -51,11 +86,14 @@ function runOSA(lines) {
  */
 async function getFrontmostAppName() {
   try {
+    nffLog("[getFrontmostAppName] calling System Events");
     const out = await runOSA(
       'tell application "System Events" to get name of first application process whose frontmost is true'
     );
+    nffLog("[getFrontmostAppName] result:", out);
     return (out || "").trim() || null;
-  } catch {
+  } catch (e) {
+    nffLog("[getFrontmostAppName] error:", String(e));
     return null;
   }
 }
@@ -147,6 +185,7 @@ async function restoreAutoHideMenuBar() {
  * Returns array of app names.
  */
 async function listApps() {
+  nffLog("[listApps] start");
   const script = `
     tell application "System Events"
       set appNames to (name of every application process where background only is false)
@@ -154,14 +193,19 @@ async function listApps() {
     set text item delimiters to ","
     return appNames as text
   `;
-  const raw = await runOSA(script);
-  const items = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .filter((v, i, a) => a.indexOf(v) === i);
-
-  return items;
+  try {
+    const raw = await runOSA(script);
+    const items = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((v, i, a) => a.indexOf(v) === i);
+    nffLog("[listApps] success count=", String(items.length));
+    return items;
+  } catch (e) {
+    nffLog("[listApps] error:", String(e));
+    throw e;
+  }
 }
 
 /**
@@ -169,8 +213,15 @@ async function listApps() {
  */
 async function activateApp(appName) {
   if (!appName) return;
+  nffLog("[activateApp] start appName=", appName);
   const script = `tell application "${appName}" to activate`;
-  await runOSA(script);
+  try {
+    await runOSA(script);
+    nffLog("[activateApp] success");
+  } catch (e) {
+    nffLog("[activateApp] error:", String(e));
+    throw e;
+  }
 }
 
 /**
@@ -178,6 +229,7 @@ async function activateApp(appName) {
  */
 async function appHasWindows(appName) {
   if (!appName) return false;
+  nffLog("[appHasWindows] start appName=", appName);
   const script = `
     tell application "System Events"
       if not (exists application process "${appName}") then return "NO"
@@ -187,8 +239,21 @@ async function appHasWindows(appName) {
       end tell
     end tell
   `;
-  const out = await runOSA(script);
-  return out === "YES";
+  try {
+    const out = await runOSA(script);
+    const result = out === "YES";
+    nffLog("[appHasWindows] result=", String(result));
+    return result;
+  } catch (e) {
+    const msg = String(e && (e.stderr || e.message || e) || "");
+    nffLog("[appHasWindows] error:", msg);
+    if (isAccessibilityDenied(msg)) {
+      const err = new Error("ACCESSIBILITY_DENIED");
+      err.code = "ACCESSIBILITY_DENIED";
+      throw err;
+    }
+    throw e;
+  }
 }
 
 /**
@@ -204,6 +269,7 @@ async function setFrontWindowBounds(appName, rect) {
   const h = Math.round(rect.h);
 
   log(`[PIN] TRY  ${appName} -> x=${x} y=${y} w=${w} h=${h}`);
+  nffLog("[setFrontWindowBounds] appName=", appName, "x=", String(x), "y=", String(y), "w=", String(w), "h=", String(h));
 
   const script = `
     tell application "System Events"
@@ -228,8 +294,14 @@ async function setFrontWindowBounds(appName, rect) {
     end tell
   `;
 
-  const out = await runOSA(script);
-  log(`[PIN] DONE ${appName} -> ${out}`);
+  try {
+    const out = await runOSA(script);
+    log(`[PIN] DONE ${appName} -> ${out}`);
+    nffLog("[setFrontWindowBounds] result=", out);
+  } catch (e) {
+    nffLog("[setFrontWindowBounds] error:", String(e));
+    throw e;
+  }
 }
 
 /**
@@ -238,6 +310,8 @@ async function setFrontWindowBounds(appName, rect) {
  */
 async function getFrontWindowBounds(appName) {
   if (!appName) return null;
+
+  nffLog("[getFrontWindowBounds] start appName=", appName);
 
   const script = `
     tell application "System Events"
@@ -262,20 +336,24 @@ async function getFrontWindowBounds(appName) {
     const out = await runOSA(script);
     if (out === "NOAPP" || out === "NOWIN") {
       log(`[AX] getFrontWindowBounds failed: ${out}`);
+      nffLog("[getFrontWindowBounds] failed:", out);
       return null;
     }
 
     const parts = out.split(",").map((s) => parseInt(s.trim(), 10));
     if (parts.length !== 4 || parts.some(isNaN)) {
       log(`[AX] getFrontWindowBounds parse error: ${out}`);
+      nffLog("[getFrontWindowBounds] parse error:", out);
       return null;
     }
 
     const measured = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
     log(`[AX] front window bounds: x=${measured.x} y=${measured.y} w=${measured.w} h=${measured.h}`);
+    nffLog("[getFrontWindowBounds] success x=", String(measured.x), "y=", String(measured.y), "w=", String(measured.w), "h=", String(measured.h));
     return measured;
   } catch (e) {
     log(`[AX] getFrontWindowBounds error: ${e?.message || e}`);
+    nffLog("[getFrontWindowBounds] error:", String(e));
     return null;
   }
 }
@@ -640,6 +718,184 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
 }
 
 /**
+ * Check if accessibility permission is granted
+ */
+async function checkAccessibilityPermission() {
+  const script = `
+    tell application "System Events"
+      set frontProc to first application process whose frontmost is true
+      set b to position of front window of frontProc
+      return "OK"
+    end tell
+  `;
+  try {
+    await runOSA(script);
+    return { ok: true };
+  } catch (e) {
+    if (e.message && (e.message.includes("-25211") || e.message.includes("not allowed assistive access"))) {
+      return { ok: false, reason: "accessibility" };
+    }
+    return { ok: true }; // other errors, assume OK
+  }
+}
+
+/**
+ * Create permission modal window
+ */
+function createPermissionModal({ onOpenSettings, onRecheck }) {
+  const { BrowserWindow, shell } = require("electron");
+
+  const modal = new BrowserWindow({
+    width: 620,
+    height: 320,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: "No Frills Focus",
+    backgroundColor: "#f5f5f5",
+    show: false,
+    alwaysOnTop: true,
+    center: true,
+    modal: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>No Frills Focus</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f5f5f5;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 480px;
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      box-sizing: border-box;
+    }
+
+    h1 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+      font-weight: 500;
+      color: #333;
+      letter-spacing: -0.3px;
+    }
+
+    p {
+      margin: 0 0 16px 0;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #555;
+    }
+
+    p:last-of-type {
+      margin-bottom: 24px;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    button {
+      appearance: none;
+      background: #ededed;
+      border: 1px solid #d0d0d0;
+      color: #222;
+      border-radius: 8px;
+      height: 38px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s ease;
+    }
+
+    button:hover {
+      background: #e0e0e0;
+    }
+
+    button:active {
+      background: #d8d8d8;
+    }
+
+    button:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px #f5f5f5, 0 0 0 4px #b0b0b0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Accessibility Permission Required</h1>
+    <p>No Frills Focus needs accessibility permission to manage window positioning.</p>
+    <p>Click "Open System Settings" below, then enable No Frills Focus in<br>Privacy & Security → Accessibility.</p>
+    <div class="actions">
+      <button id="open">Open System Settings</button>
+      <button id="done">I've Granted Permission</button>
+    </div>
+  </div>
+
+  <script>
+    const openBtn = document.getElementById('open');
+    const doneBtn = document.getElementById('done');
+
+    openBtn.addEventListener('click', () => {
+      window.location.href = 'nff://open-accessibility';
+    });
+
+    doneBtn.addEventListener('click', () => {
+      window.location.href = 'nff://recheck-accessibility';
+    });
+  </script>
+</body>
+</html>`;
+
+  modal.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+
+  // Handle the two pseudo-links without exposing Node in the renderer
+  modal.webContents.on("will-navigate", (e, url) => {
+    if (!url.startsWith("nff://")) return;
+    e.preventDefault();
+
+    if (url === "nff://open-accessibility") {
+      try {
+        // Deep link to Accessibility settings
+        shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+      } catch (_) {}
+      if (typeof onOpenSettings === "function") onOpenSettings();
+    }
+
+    if (url === "nff://recheck-accessibility") {
+      if (typeof onRecheck === "function") onRecheck(modal);
+    }
+  });
+
+  modal.once("ready-to-show", () => modal.show());
+
+  return modal;
+}
+
+/**
  * Picker UI window
  * UX:
  * - Centered on screen
@@ -713,6 +969,8 @@ function normalizeDuration(durationMin) {
  * Session lifecycle
  */
 async function startSession(selectedApp, durationMin) {
+  nffLog("[STEP] startSession entered");
+  nffLog("[START] selected=", String(selectedApp), "durationMin=", String(durationMin));
   pinFailCount = 0;
 
   if (pinInterval) { clearInterval(pinInterval); pinInterval = null; }
@@ -730,7 +988,9 @@ async function startSession(selectedApp, durationMin) {
 
   log(`[SESSION] start: selectedApp="${selectedApp}" durationMin=${durationMin} mode=${dur.mode}`);
 
+  nffLog("[STEP] before activate target app", String(selectedApp));
   await activateApp(selectedApp);
+  nffLog("[STEP] after activate target app");
 
   const hasWin = await appHasWindows(selectedApp);
   if (!hasWin) {
@@ -806,7 +1066,9 @@ async function startSession(selectedApp, durationMin) {
 
   try {
     // Masks always cover full screen regardless of input
+    nffLog("[STEP] before create masks");
     createMaskWindows(full, opening);
+    nffLog("[STEP] after create masks count=", String(maskWins?.length || 0));
   } catch (e) {
     log("[SESSION] abort: mask creation failed:", e?.message || e);
     session = null;
@@ -820,6 +1082,8 @@ async function startSession(selectedApp, durationMin) {
     log("[SESSION] warning: corner patch creation failed:", e?.message || e);
   }
 
+  nffLog("[STEP] before assertAllMasksOnTop");
+  
   // Immediately re-activate the selected app and re-pin its front window.
   // This restores the snapback behavior and ensures the app remains frontmost
   // above the masks after the masks have been placed at screen-saver level.
@@ -832,6 +1096,8 @@ async function startSession(selectedApp, durationMin) {
   } catch (e) {
     log("[SESSION] warning: re-activate/re-pin failed:", e?.message || e);
   }
+
+  nffLog("[STEP] after assertAllMasksOnTop");
 
   if (!maskWins || maskWins.length < 5) {
     log(`[SESSION] abort: masks not present (count=${maskWins?.length || 0})`);
@@ -999,11 +1265,21 @@ ipcMain.handle("apps:list", async () => {
 });
 
 ipcMain.handle("session:start", async (_evt, payload) => {
+  nffLog("[IPC session:start]", JSON.stringify(payload || {}));
   try {
     const { selectedApp, durationMin } = payload || {};
-    return await startSession(selectedApp, durationMin);
+    nffLog("[IPC] calling startSession selectedApp=", selectedApp, "durationMin=", String(durationMin));
+    const result = await startSession(selectedApp, durationMin);
+    nffLog("[IPC] startSession returned:", JSON.stringify(result || {}));
+    return result;
   } catch (e) {
-    return { ok: false, error: e.message };
+    const code = e && e.code ? String(e.code) : "";
+    const message =
+      code === "ACCESSIBILITY_DENIED"
+        ? "ACCESSIBILITY_DENIED"
+        : (e && e.message ? String(e.message) : "UNKNOWN_ERROR");
+    nffLog("[IPC] startSession threw error code=", code, "message=", message);
+    return { ok: false, code: code || "START_FAILED", message };
   }
 });
 
@@ -1023,13 +1299,48 @@ ipcMain.handle("session:lastEndReason", async () => {
   return r;
 });
 
+ipcMain.handle("accessibility:check", async () => {
+  return await checkAccessibilityPermission();
+});
+
 /**
  * Boot
  */
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   log("[BOOT] __dirname =", __dirname);
   log("[BOOT] preload =", path.join(__dirname, "preload.js"));
   log("[BOOT] index   =", path.join(__dirname, "renderer", "index.html"));
+
+  // Check accessibility permission first
+  const hasPermission = await checkAccessibilityPermission();
+  
+  if (!hasPermission.ok) {
+    log("[BOOT] Accessibility permission not granted, showing modal");
+    const modal = createPermissionModal({
+      onOpenSettings: () => {
+        log("[MODAL] User clicked 'Open System Settings'");
+      },
+      onRecheck: async (modalWindow) => {
+        log("[MODAL] User clicked 'I've Granted Permission', rechecking...");
+        const recheckPermission = await checkAccessibilityPermission();
+        if (recheckPermission.ok) {
+          log("[MODAL] Permission now granted, closing modal and showing picker");
+          modalWindow.close();
+          createPickerWindow();
+          registerShortcuts();
+          if (pickerWin) {
+            pickerWin.show();
+            pickerWin.focus();
+          }
+        } else {
+          log("[MODAL] Permission still not granted, keeping modal open");
+          // Keep modal open - don't close or create new one
+        }
+      },
+    });
+    modal.show();
+    return;
+  }
 
   createPickerWindow();
   registerShortcuts();
