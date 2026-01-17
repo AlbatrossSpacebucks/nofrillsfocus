@@ -1,10 +1,9 @@
-# Electron build output
 dist/
+build/
+dmg/
+node_modules/
 *.app
 *.zip
-
-# Notarization artifacts
+*.dmg
 *.notary.zip
-
-# OS noise
 .DS_Store
