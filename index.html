@@ -66,6 +66,7 @@
       height: 1px;
       background: var(--hair);
       margin: 18px 0 18px;
+      border: 0;
     }
 
     .section{ margin: 0 0 18px; }
@@ -79,6 +80,13 @@
       margin: 18px 0 10px;
     }
 
+    h2{
+      margin: 0 0 10px;
+      font-size: 28px;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+    }
+
     p{
       margin: 0 0 10px;
       font-size: 16px;
@@ -88,17 +96,44 @@
 
     .tight p{ margin-bottom: 8px; }
 
-    .lines{
-      margin: 10px 0 0;
-      padding: 0;
-      list-style: none;
+    /* FIX: bullets were broken + nested; unify */
+    .bullets{
+      margin: 12px 0 0;
+      padding-left: 22px;
+      list-style: disc;
     }
-
-    .lines li{
+    .bullets li{
       margin: 6px 0;
       color: var(--text);
       font-size: 16px;
       line-height: 1.5;
+    }
+
+    /* FIX: download button classes used in HTML but missing in CSS */
+    .cta{ margin: 12px 0 0; }
+    .button{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.14);
+      color: var(--text);
+      font-weight: 600;
+      letter-spacing: .01em;
+      user-select:none;
+    }
+    .button:hover{ background: rgba(255,255,255,.18); }
+    .button:active{ transform: translateY(1px); }
+
+    .fine{
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--muted);
+      margin-top: 10px;
     }
 
     .cta-row{
@@ -180,99 +215,103 @@
 
 <body>
   <main class="frame">
-   <article class="panel" role="region" aria-label="No Frills Focus landing">
+    <article class="panel" role="region" aria-label="No Frills Focus landing">
 
-  <h1>No Frills Focus</h1>
+      <h1>No Frills Focus</h1>
 
-  <p class="sub">A digital minimalism environment for macOS.</p>
+      <p class="sub">A digital minimalism environment for macOS.</p>
 
-  <hr class="rule">
+      <hr class="rule">
 
-  <section class="block" id="what-it-is">
-    <h2>What it is</h2>
-    <p>
-      No Frills Focus masks everything on your screen except the work you're doing.
-      Nothing on your desktop is moved, changed, or rearranged — it’s simply hidden from view.
-    </p>
-    
-  </section>
+      <section class="block" id="what-it-is">
+        <h2>What it is</h2>
+        <p>
+          No Frills Focus masks everything on your screen except the work you're doing.
+          Nothing on your desktop is moved, changed, or rearranged — it’s simply hidden from view.
+        </p>
+      </section>
 
-  <hr class="rule">
+      <hr class="rule">
 
-  <section class="block" id="how-it-works">
-    <h2>How it works</h2>
-    <p>Start a session. Choose the document or app you want to work in. Your work appears inside a macOS window. Everything else fades behind a neutral backdrop.</p>
+      <section class="block" id="how-it-works">
+        <h2>How it works</h2>
+        <p>
+          Start a session. Choose the document or app you want to work in.
+          Your work appears inside a macOS window. Everything else fades behind a neutral backdrop.
+        </p>
 
-    <ul class="bullets">
-     <ul>
-  <li>No virtual desktops.</li>
-  <li>No workflows to learn.</li>
-  <li>No file juggling.</li>
-  <li>Use the writing tools and work apps you already trust.</li>
-  <li>When the session ends, your desktop returns exactly as you left it.</li>
-</ul>
+        <!-- FIX: removed nested <ul> and applied correct class -->
+        <ul class="bullets">
+          <li>No virtual desktops.</li>
+          <li>No workflows to learn.</li>
+          <li>No file juggling.</li>
+          <li>Use the writing tools and work apps you already trust.</li>
+          <li>When the session ends, your desktop returns exactly as you left it.</li>
+        </ul>
+      </section>
 
-  <hr class="rule">
+      <hr class="rule">
 
-  <section class="block" id="why-this-helps">
-    <h2>Why this helps</h2>
-    <p>
-      No Frills Focus was built around a simple observation:
-      when visual drift points disappear, your mind stops scanning for exits, your grip on time loosens, and longer work sessions start to feel second nature.
-    </p>
-    <p>
-      There’s no visible timer on screen, no countdown anxiety, no score-keeping — just a quiet end when the session is over.
-    </p>
-  </section>
+      <section class="block" id="why-this-helps">
+        <h2>Why this helps</h2>
+        <p>
+          No Frills Focus was built around a simple observation:
+          when visual drift points disappear, your mind stops scanning for exits, your grip on time loosens, and longer work sessions start to feel second nature.
+        </p>
+        <p>
+          There’s no visible timer on screen, no countdown anxiety, no score-keeping — just a quiet end when the session is over.
+        </p>
+      </section>
 
-  <hr class="rule">
+      <hr class="rule">
 
-  <section class="block" id="design-philosophy">
-    <h2>Design philosophy</h2>
-    <p>
-      No Frills Focus isn’t about productivity tricks or motivational jargon. It’s about making a deliberate commitment: this is the work I’m doing now. Everything else can wait. 
-      The app applies light enforcement to that decision by removing everything else from view. Constraint and simplicity are the point. The rest is up to you.
-    </p>
-  </section>
+      <section class="block" id="design-philosophy">
+        <h2>Design philosophy</h2>
+        <p>
+          No Frills Focus isn’t about productivity tricks or motivational jargon. It’s about making a deliberate commitment: this is the work I’m doing now. Everything else can wait.
+          The app applies light enforcement to that decision by removing everything else from view. Constraint and simplicity are the point. The rest is up to you.
+        </p>
+      </section>
 
-  <hr class="rule">
+      <hr class="rule">
 
-  <section class="block" id="privacy">
-    <h2>Privacy</h2>
-    <p>
-      No Frills Focus doesn’t track you or collect your data. There are no subscriptions or tiers.
-      Your work stays on your computer. The app works entirely offline.
-    </p>
-  </section>
+      <section class="block" id="privacy">
+        <h2>Privacy</h2>
+        <p>
+          No Frills Focus doesn’t track you or collect your data. There are no subscriptions or tiers.
+          Your work stays on your computer. The app works entirely offline.
+        </p>
+      </section>
 
-  <hr class="rule">
+      <hr class="rule">
 
-  <section class="block" id="getting-out">
-    <h2>Getting out</h2>
-    <p>
-      You can always end a session early. Nothing is locked.
-      We just make not working a conscious decision rather than a passive one.
-    </p>
+      <section class="block" id="getting-out">
+        <h2>Getting out</h2>
+        <p>
+          You can always end a session early. Nothing is locked.
+          We just make not working a conscious decision rather than a passive one.
+        </p>
 
-    <!-- Replace these with your actual shortcuts -->
-    <ul class="bullets">
-      <li><strong>Cmd + Shift + X</strong> — Exit session</li>
-      <li><strong>Cmd + Shift + Z</strong> — Exit app</li>
-    </ul>
-  </section>
+        <ul class="bullets">
+          <li><strong>Cmd + Shift + X</strong> — Exit session</li>
+          <li><strong>Cmd + Shift + Z</strong> — Exit app</li>
+        </ul>
+      </section>
 
-<hr class="rule">
-<section class="block" id="download">
-  <h2>Download</h2>
-  <p class="cta">
-    <a class="button"
-       href="https://github.com/AlbatrossSpacebucks/nofrillsfocus/releases/download/v0.1.7/No%20Frills%20Focus-0.1.7-arm64-mac.zip">
-      Download No Frills Focus for macOS
-    </a>
-  </p>
-  <p class="fine">One window. One focus. No frills.</p>
-</section>
+      <hr class="rule">
 
+      <section class="block" id="download">
+        <h2>Download</h2>
+        <p class="cta">
+          <a class="button"
+             href="https://github.com/AlbatrossSpacebucks/nofrillsfocus/releases/download/v0.1.7/No%20Frills%20Focus-0.1.7-arm64-mac.zip">
+            Download No Frills Focus for macOS
+          </a>
+        </p>
+        <p class="fine">One window. One focus. No frills.</p>
+      </section>
 
-
-</article>
+    </article>
+  </main>
+</body>
+</html>
