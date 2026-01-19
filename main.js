@@ -503,7 +503,20 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
 
   // ALWAYS use the real physical display bounds for mask coverage.
   // This is the only way to reliably cover menu bar / dock / notch weirdness.
-  const full = screen.getPrimaryDisplay().bounds;
+  const cursorPoint = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursorPoint);
+  const bounds = display.bounds;     // FULL display (includes menu bar region)
+  const work = display.workArea;     // usable region (excludes menu bar/dock)
+
+  // Calculate real menu bar height (gap between bounds and workArea)
+  const menuBarH = Math.max(0, work.y - bounds.y);
+
+  const full = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+  };
 
   // Small overlap for seam removal (do not exceed 3px)
   const OL = 2;
@@ -594,6 +607,9 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
       show: false,
       hasShadow: false,
       skipTaskbar: true,
+      kiosk: true,
+      fullscreen: true,
+      simpleFullscreen: true,
       // DO NOT rely on ctor alwaysOnTop on macOS; we force it after show/load.
       webPreferences: {
         contextIsolation: true,
@@ -604,7 +620,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
 
     // Prevent mask from ever becoming key/main window
     w.setFocusable(false);
-    w.setAlwaysOnTop(true, "status");
+    w.setAlwaysOnTop(true, "screen-saver");
     w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     try { w.setIgnoreMouseEvents(false); } catch {}
     
@@ -613,7 +629,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
 
     // Helper: macOS compositor sometimes needs repeated assertions.
     const assertTopmost = () => {
-      try { w.setAlwaysOnTop(true, "status"); } catch {}
+      try { w.setAlwaysOnTop(true, "screen-saver"); } catch {}
       try { w.moveTop(); } catch {}
     };
 
@@ -647,7 +663,8 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
   }
 
   // TOP CAP: tiny mask to cover menu bar sliver
-  const CAP_H = 6;
+  const CAP_H = Math.max(6, menuBarH + 2); // +2 safety overlap
+  log("[MASK] menuBarH", menuBarH);
   const topCap = makeMask({
     x: full.x,
     y: full.y,
@@ -742,12 +759,12 @@ async function checkAccessibilityPermission() {
 /**
  * Create permission modal window
  */
-function createPermissionModal({ onOpenSettings, onRecheck }) {
+function createPermissionModal({ onOpenSettings, onRecheck, onTimeout }) {
   const { BrowserWindow, shell } = require("electron");
 
   const modal = new BrowserWindow({
     width: 620,
-    height: 320,
+    height: 360,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -755,7 +772,7 @@ function createPermissionModal({ onOpenSettings, onRecheck }) {
     title: "No Frills Focus",
     backgroundColor: "#f5f5f5",
     show: false,
-    alwaysOnTop: true,
+    alwaysOnTop: false,
     center: true,
     modal: false,
     webPreferences: {
@@ -816,6 +833,22 @@ function createPermissionModal({ onOpenSettings, onRecheck }) {
       gap: 12px;
     }
 
+    .timeout-message {
+      display: none;
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #664d03;
+    }
+
+    .timeout-message.show {
+      display: block;
+    }
+
     button {
       appearance: none;
       background: #ededed;
@@ -842,6 +875,26 @@ function createPermissionModal({ onOpenSettings, onRecheck }) {
       outline: none;
       box-shadow: 0 0 0 2px #f5f5f5, 0 0 0 4px #b0b0b0;
     }
+
+    #relaunch {
+      grid-column: 1 / -1;
+      display: none;
+      background: #dc3545;
+      color: white;
+      border-color: #bb2d3b;
+    }
+
+    #relaunch:hover {
+      background: #bb2d3b;
+    }
+
+    #relaunch:active {
+      background: #a02834;
+    }
+
+    #relaunch.show {
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -849,15 +902,21 @@ function createPermissionModal({ onOpenSettings, onRecheck }) {
     <h1>Accessibility Permission Required</h1>
     <p>No Frills Focus needs accessibility permission to manage window positioning.</p>
     <p>Click "Open System Settings" below, then enable No Frills Focus in<br>Privacy & Security → Accessibility.</p>
+    <div class="timeout-message" id="timeoutMsg">
+      If the app doesn't proceed, remove and re-add No Frills Focus using the + button.
+    </div>
     <div class="actions">
       <button id="open">Open System Settings</button>
       <button id="done">I've Granted Permission</button>
+      <button id="relaunch">Quit and Relaunch</button>
     </div>
   </div>
 
   <script>
     const openBtn = document.getElementById('open');
     const doneBtn = document.getElementById('done');
+    const relaunchBtn = document.getElementById('relaunch');
+    const timeoutMsg = document.getElementById('timeoutMsg');
 
     openBtn.addEventListener('click', () => {
       window.location.href = 'nff://open-accessibility';
@@ -866,20 +925,44 @@ function createPermissionModal({ onOpenSettings, onRecheck }) {
     doneBtn.addEventListener('click', () => {
       window.location.href = 'nff://recheck-accessibility';
     });
+
+    relaunchBtn.addEventListener('click', () => {
+      window.location.href = 'nff://relaunch';
+    });
+
+    // Listen for messages from main process to show timeout UI
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'show-timeout') {
+        timeoutMsg.classList.add('show');
+        relaunchBtn.classList.add('show');
+      }
+    });
   </script>
 </body>
 </html>`;
 
   modal.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
 
-  // Handle the two pseudo-links without exposing Node in the renderer
+  // Helper: set modal to BLOCKING state (always on top, blocks everything)
+  const setBlocking = () => {
+    try { modal.setAlwaysOnTop(true, "screen-saver"); } catch {}
+  };
+
+  // Helper: set modal to PENDING state (visible but not on top, allows system settings to come forward)
+  const setPending = () => {
+    try { modal.setAlwaysOnTop(false); } catch {}
+  };
+
+  // Handle the three pseudo-links without exposing Node in the renderer
   modal.webContents.on("will-navigate", (e, url) => {
     if (!url.startsWith("nff://")) return;
     e.preventDefault();
 
     if (url === "nff://open-accessibility") {
+      log("[MODAL] User clicked 'Open System Settings'");
       try {
         // Deep link to Accessibility settings
+        const { shell } = require("electron");
         shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
       } catch (_) {}
       if (typeof onOpenSettings === "function") onOpenSettings();
@@ -888,11 +971,17 @@ function createPermissionModal({ onOpenSettings, onRecheck }) {
     if (url === "nff://recheck-accessibility") {
       if (typeof onRecheck === "function") onRecheck(modal);
     }
+
+    if (url === "nff://relaunch") {
+      log("[MODAL] User clicked 'Quit and Relaunch'");
+      app.relaunch();
+      app.exit(0);
+    }
   });
 
   modal.once("ready-to-show", () => modal.show());
 
-  return modal;
+  return { modal, setBlocking, setPending };
 }
 
 /**
@@ -904,14 +993,21 @@ function createPermissionModal({ onOpenSettings, onRecheck }) {
 function createPickerWindow() {
   if (pickerWin) return pickerWin;
 
-  const display = screen.getPrimaryDisplay();
+  // Use display nearest cursor for multi-monitor setups
+  const cursorPoint = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursorPoint);
   const work = display.workArea; // respects menu bar + dock
 
   const width = Math.round(Math.max(560, Math.min(820, work.width * 0.32)));
   const height = Math.round(Math.max(420, Math.min(620, work.height * 0.45)));
 
-  const x = Math.round(work.x + (work.width - width) / 2);
-  const y = Math.round(work.y + (work.height - height) / 2);
+  // Center within workArea
+  let x = Math.round(work.x + (work.width - width) / 2);
+  let y = Math.round(work.y + (work.height - height) / 2);
+
+  // Clamp to ensure window stays fully visible within workArea
+  x = Math.max(work.x, Math.min(x, work.x + work.width - width));
+  y = Math.max(work.y, Math.min(y, work.y + work.height - height));
 
   pickerWin = new BrowserWindow({
     x,
@@ -1316,9 +1412,47 @@ app.whenReady().then(async () => {
   
   if (!hasPermission.ok) {
     log("[BOOT] Accessibility permission not granted, showing modal");
-    const modal = createPermissionModal({
+    const { modal, setBlocking, setPending } = createPermissionModal({
       onOpenSettings: () => {
-        log("[MODAL] User clicked 'Open System Settings'");
+        log("[MODAL] Opening System Settings → entering PENDING state");
+        setPending();
+        
+        // Start polling for permission (500ms interval, ~20s timeout)
+        let pollCount = 0;
+        const maxPolls = 40; // ~20 seconds at 500ms intervals
+        
+        const pollInterval = setInterval(async () => {
+          pollCount++;
+          log(`[POLL] attempt ${pollCount}/${maxPolls}`);
+          
+          const perm = await checkAccessibilityPermission();
+          if (perm.ok) {
+            log("[POLL] Permission granted! Closing modal and proceeding.");
+            clearInterval(pollInterval);
+            modal.close();
+            
+            // Continue boot sequence
+            createPickerWindow();
+            registerShortcuts();
+            if (pickerWin) {
+              pickerWin.show();
+              pickerWin.focus();
+            }
+            return;
+          }
+          
+          if (pollCount >= maxPolls) {
+            log("[POLL] Timeout reached, showing escape hatch");
+            clearInterval(pollInterval);
+            // Show timeout message in modal
+            try {
+              modal.webContents.executeJavaScript(
+                `window.postMessage({ type: 'show-timeout' }, '*')`
+              );
+            } catch (_) {}
+            return;
+          }
+        }, 500);
       },
       onRecheck: async (modalWindow) => {
         log("[MODAL] User clicked 'I've Granted Permission', rechecking...");
@@ -1333,12 +1467,13 @@ app.whenReady().then(async () => {
             pickerWin.focus();
           }
         } else {
-          log("[MODAL] Permission still not granted, keeping modal open");
-          // Keep modal open - don't close or create new one
+          log("[MODAL] Permission still not granted");
         }
       },
     });
-    modal.show();
+    
+    // Set BLOCKING state initially (always on top, prevents interaction with anything else)
+    setBlocking();
     return;
   }
 
