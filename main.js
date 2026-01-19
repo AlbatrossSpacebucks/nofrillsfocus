@@ -7,6 +7,9 @@ const { app, BrowserWindow, ipcMain, globalShortcut, screen } = require("electro
 const { execFile } = require("child_process");
 const fs = require("fs");
 
+// Disable macOS menu bar auto-hide reservation to prevent hover region conflicts
+app.commandLine.appendSwitch("disable-features", "MacMenuBarAutoHide");
+
 function nffLog(...args) {
   try {
     fs.appendFileSync("/tmp/nff.log", `[${new Date().toISOString()}] ${args.join(" ")}\n`);
@@ -607,6 +610,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
       show: false,
       hasShadow: false,
       skipTaskbar: true,
+      autoHideMenuBar: true,
       kiosk: true,
       fullscreen: true,
       simpleFullscreen: true,
@@ -775,6 +779,7 @@ function createPermissionModal({ onOpenSettings, onRecheck, onTimeout }) {
     alwaysOnTop: false,
     center: true,
     modal: false,
+    autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -1014,10 +1019,13 @@ function createPickerWindow() {
     y,
     width,
     height,
-    frame: true,
+    frame: false,
+    titleBarStyle: "hidden",
+    titleBarOverlay: false,
     resizable: false,
     movable: true,
     show: false,
+    autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),

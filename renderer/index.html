@@ -21,7 +21,13 @@
       "Liberation Mono",
       monospace;
     }
-    .wrap { height:100%; display:grid; place-items:center; padding:24px; }
+    .titleBar {
+      -webkit-app-region: drag;
+      height: 28px;
+      padding-top: 8px;
+      user-select: none;
+    }
+    .wrap { height:calc(100% - 36px); display:grid; place-items:center; padding:24px; }
     .card {
       width:min(720px,92vw);
       background:rgba(255,255,255,.04);
@@ -45,6 +51,7 @@
       padding:12px;
       font-size:14px;
       outline:none;
+      -webkit-app-region: no-drag;
     }
     button { margin-top:14px; background:rgba(255,255,255,.06); cursor:pointer; }
     button:hover { background:rgb(60, 58, 58); }
@@ -74,6 +81,7 @@
   </style>
 </head>
 <body>
+  <div class="titleBar"></div>
   <div class="wrap">
     <div class="card">
       <h1 class="title">No Frills Focus</h1>
