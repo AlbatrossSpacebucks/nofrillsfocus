@@ -34,6 +34,41 @@ let session = null;
 // Remember previous menu-bar autohide state so we can restore it.
 let menuBarPrev = null;
 
+// Throttled mask re-assertion to combat macOS restacking
+let _reassertPending = false;
+let _reassertLastReason = "manual";
+
+function reassertMaskState(reason = "manual") {
+  if (!session) return;
+  if (!Array.isArray(maskWins) || maskWins.length !== 5) return;
+
+  for (const w of maskWins) {
+    if (!w || w.isDestroyed()) continue;
+
+    applyMenuBarSuppression(w);
+    try { w.setAlwaysOnTop(true, "screen-saver"); } catch {}
+    try { w.moveTop(); } catch {}
+
+    // recommit current bounds (no math changes)
+    try {
+      const b = w.getBounds();
+      w.setBounds(b, false);
+    } catch {}
+  }
+
+  log(`[REASSERT] reason=${reason} masks=${maskWins.length}`);
+}
+
+function requestReassert(reason = "manual") {
+  _reassertLastReason = reason;
+  if (_reassertPending) return;
+  _reassertPending = true;
+  setTimeout(() => {
+    _reassertPending = false;
+    reassertMaskState(_reassertLastReason);
+  }, 300);
+}
+
 const ENABLE_CORNER_PATCHES = false;  // easy toggle
 const CORNER_PATCH_PX = 16;          // start with 14 or 16; 16 recommended
 const CORNER_RADIUS_PX = 10;         // tweak only if needed
@@ -818,6 +853,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
     openH: opening.h,
   });
   log(`[BLINDERS] masks created: count=${maskWins.length}`);
+  requestReassert("masks:shown");
 }
 
 /**
@@ -1334,6 +1370,8 @@ async function startSession(selectedApp, durationMin) {
     log("[SESSION] warning: re-activate/re-pin failed:", e?.message || e);
   }
 
+  requestReassert("pin:after");
+
   nffLog("[STEP] after assertAllMasksOnTop");
 
   if (!maskWins || maskWins.length < 5) {
@@ -1625,6 +1663,9 @@ ipcMain.handle("diagnostics:gather", async () => {
     return { ok: false, error: e?.message || String(e) };
   }
 });
+
+app.on("activate", () => requestReassert("app:activate"));
+screen.on("display-metrics-changed", () => requestReassert("screen:metrics"));
 
 /**
  * Boot

@@ -1,6 +1,6 @@
 {
   "name": "no-frills-focus",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "A commitment enforcement tool for macOS",
   "main": "main.js",
   "author": "No Frills Focus",
