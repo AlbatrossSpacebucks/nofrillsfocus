@@ -55,6 +55,13 @@
     }
     button { margin-top:14px; background:rgba(255,255,255,.06); cursor:pointer; }
     button:hover { background:rgb(60, 58, 58); }
+    button.secondary { 
+      background:rgba(0,0,0,.15); 
+      font-size:12px;
+      padding:8px 12px;
+      margin-top:8px;
+    }
+    button.secondary:hover { background:rgba(0,0,0,.25); }
 
     .statusBox {
       margin-top:12px;
@@ -101,6 +108,7 @@
       </select>
 
       <button id="confirmBtn">Get started</button>
+      <button id="diagBtn" class="secondary">Copy Diagnostics</button>
 
       <div class="statusBox">
         <div class="status" id="status"></div>

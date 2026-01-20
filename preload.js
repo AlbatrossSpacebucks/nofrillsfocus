@@ -36,4 +36,7 @@ contextBridge.exposeInMainWorld("workroom", {
 
   // Check accessibility permission
   checkAccessibility: async () => ipcRenderer.invoke("accessibility:check"),
+
+  // Gather diagnostics for debugging
+  gatherDiagnostics: async () => ipcRenderer.invoke("diagnostics:gather"),
 });

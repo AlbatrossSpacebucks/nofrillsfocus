@@ -3,6 +3,7 @@
   const appSelect = document.getElementById("appSelect");
   const durationSelect = document.getElementById("durationSelect");
   const confirmBtn = document.getElementById("confirmBtn");
+  const diagBtn = document.getElementById("diagBtn");
   const statusEl = document.getElementById("status");
   const hintEl = document.getElementById("hint");
 
@@ -141,6 +142,25 @@
   }
 
   confirmBtn.addEventListener("click", onConfirm);
+
+  diagBtn.addEventListener("click", async () => {
+    setStatus("Gathering diagnostics…");
+    try {
+      const res = await window.workroom.gatherDiagnostics();
+      if (res && res.ok) {
+        const json = JSON.stringify(res.diagnostics, null, 2);
+        await navigator.clipboard.writeText(json);
+        setStatus("Copied! Also saved to:\n" + res.path);
+        setTimeout(() => setStatus(""), 3000);
+      } else {
+        setStatus("Failed to gather diagnostics.");
+        setTimeout(() => setStatus(""), 2000);
+      }
+    } catch (e) {
+      setStatus("Failed to copy diagnostics: " + String(e));
+      setTimeout(() => setStatus(""), 2000);
+    }
+  });
 
   loadApps();
 })();

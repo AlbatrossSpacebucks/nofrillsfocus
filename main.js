@@ -50,6 +50,7 @@ let lastEndReason = null;
 const DEBUG = {
   devtools: process.env.WORKROOM_DEVTOOLS === "1",
   showPickerOnBoot: process.env.WORKROOM_SHOW_PICKER === "1",
+  overlay: process.env.NFF_DEBUG === "1",
 };
 
 let permissionModalWin = null;
@@ -550,9 +551,25 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
   const EDGE = 4;     // 2–6px works; 4 is safe
   const TOP_JOIN = 4; // overlap between cap and topMask
 
-  const maskHTML = ({ showExit = false } = {}) => {
+  const maskHTML = ({ showExit = false, debugInfo = null } = {}) => {
     const exitText = "EXIT: Cmd+Shift+X    QUIT: Cmd+Shift+Z";
     const safeExit = exitText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    let debugHTML = "";
+    if (debugInfo && DEBUG.overlay) {
+      const lines = [
+        `display.bounds: ${debugInfo.bounds.x},${debugInfo.bounds.y} ${debugInfo.bounds.width}×${debugInfo.bounds.height}`,
+        `display.workArea: ${debugInfo.workArea.x},${debugInfo.workArea.y} ${debugInfo.workArea.width}×${debugInfo.workArea.height}`,
+        `menuBarH: ${debugInfo.menuBarH}`,
+        `CAP_H: ${debugInfo.capH}`,
+        `opening: ${debugInfo.opening.x},${debugInfo.opening.y} ${debugInfo.opening.w}×${debugInfo.opening.h}`,
+        `topCap: ${debugInfo.topCap.y} h=${debugInfo.topCap.h}`,
+        `topMask: ${debugInfo.topMask.y} h=${debugInfo.topMask.h}`,
+        `display.id: ${debugInfo.displayId || 'unknown'}`,
+      ];
+      const safeLines = lines.map(l => l.replace(/</g, "&lt;").replace(/>/g, "&gt;")).join("<br>");
+      debugHTML = `<div class="debugOverlay">${safeLines}</div>`;
+    }
 
     const html = `
       <html>
@@ -605,10 +622,28 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
               background: rgba(0,0,0,0.08);
               border: 1px solid rgba(0,0,0,0.12);
             }
+
+            .debugOverlay {
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              font: 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              color: rgba(0,0,0,0.35);
+              background: rgba(255,255,255,0.15);
+              padding: 12px 16px;
+              border-radius: 6px;
+              border: 1px solid rgba(0,0,0,0.08);
+              user-select: text;
+              pointer-events: none;
+              line-height: 1.5;
+              white-space: pre;
+            }
           </style>
         </head>
         <body>
           ${showExit ? `<div class="exitSign"><span>${safeExit}</span></div>` : ""}
+          ${debugHTML}
         </body>
       </html>
     `.trim();
@@ -616,7 +651,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
     return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
   };
 
-  function makeMask(bounds, { showExit = false } = {}) {
+  function makeMask(bounds, { showExit = false, debugInfo = null } = {}) {
     const w = new BrowserWindow({
       x: bounds.x,
       y: bounds.y,
@@ -667,7 +702,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
       try { w.moveTop(); } catch {}
     };
 
-    w.loadURL(maskHTML({ showExit }));
+    w.loadURL(maskHTML({ showExit, debugInfo }));
 
     // Phase 1: after load
     w.webContents.on("did-finish-load", () => {
@@ -725,6 +760,16 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
 
   // BOTTOM: cover everything below opening
   const bottomY = opening.y + opening.h;
+  const debugInfo = DEBUG.overlay ? {
+    bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+    workArea: { x: work.x, y: work.y, width: work.width, height: work.height },
+    menuBarH,
+    capH: CAP_H,
+    opening: { x: opening.x, y: opening.y, w: opening.w, h: opening.h },
+    topCap: { y: full.y, h: CAP_H },
+    topMask: { y: topMaskY, h: topMaskH },
+    displayId: display.id || 'primary',
+  } : null;
   const bottom = makeMask(
     {
       x: full.x,
@@ -732,7 +777,7 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
       width: full.width,
       height: Math.max(0, (full.y + full.height) - bottomY) + OL,
     },
-    { showExit: true }
+    { showExit: true, debugInfo }
   );
 
   // LEFT: cover left of opening, start at opening.y (no vertical climb)
@@ -1054,6 +1099,7 @@ function createPickerWindow() {
   // Use display nearest cursor for multi-monitor setups
   const cursorPoint = screen.getCursorScreenPoint();
   const display = screen.getDisplayNearestPoint(cursorPoint);
+  const bounds = display.bounds; // full display including menu bar
   const work = display.workArea; // respects menu bar + dock
 
   const width = Math.round(Math.max(560, Math.min(820, work.width * 0.32)));
@@ -1063,9 +1109,31 @@ function createPickerWindow() {
   let x = Math.round(work.x + (work.width - width) / 2);
   let y = Math.round(work.y + (work.height - height) / 2);
 
+  // Store desired position before clamping
+  const desired = { x, y, width, height };
+
   // Clamp to ensure window stays fully visible within workArea
   x = Math.max(work.x, Math.min(x, work.x + work.width - width));
   y = Math.max(work.y, Math.min(y, work.y + work.height - height));
+
+  const final = { x, y, width, height };
+
+  // Log picker positioning for diagnostics
+  log(`[PICKER] displayBounds=${bounds.x},${bounds.y} ${bounds.width}×${bounds.height} workArea=${work.x},${work.y} ${work.width}×${work.height} desired=${desired.x},${desired.y} final=${final.x},${final.y}`);
+
+  // Detect overflow conditions
+  if (final.x + final.width > work.x + work.width) {
+    log(`[PICKER] FAIL overflow-right: final.right=${final.x + final.width} > workArea.right=${work.x + work.width}`);
+  }
+  if (final.x < work.x) {
+    log(`[PICKER] FAIL overflow-left: final.x=${final.x} < workArea.x=${work.x}`);
+  }
+  if (final.y + final.height > work.y + work.height) {
+    log(`[PICKER] FAIL overflow-bottom: final.bottom=${final.y + final.height} > workArea.bottom=${work.y + work.height}`);
+  }
+  if (final.y < work.y) {
+    log(`[PICKER] FAIL overflow-top: final.y=${final.y} < workArea.y=${work.y}`);
+  }
 
   pickerWin = new BrowserWindow({
     x,
@@ -1470,6 +1538,92 @@ ipcMain.handle("session:lastEndReason", async () => {
 
 ipcMain.handle("accessibility:check", async () => {
   return await checkAccessibilityPermission();
+});
+
+ipcMain.handle("diagnostics:gather", async () => {
+  try {
+    const cursorPoint = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursorPoint);
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const bounds = display.bounds;
+    const work = display.workArea;
+    const menuBarH = Math.max(0, work.y - bounds.y);
+    const CAP_H = Math.max(6, menuBarH + 2);
+
+    let pickerBounds = null;
+    let pickerHtmlPath = null;
+    if (pickerWin) {
+      const pb = pickerWin.getBounds();
+      pickerBounds = { x: pb.x, y: pb.y, width: pb.width, height: pb.height };
+      pickerHtmlPath = path.join(__dirname, "renderer", "index.html");
+    }
+
+    // Build named mask bounds array (topCap, topMask, bottom, left, right in order)
+    const maskNames = ["topCap", "topMask", "bottom", "left", "right"];
+    let maskBounds = [];
+    if (maskWins && maskWins.length > 0) {
+      maskBounds = maskWins.map((w, idx) => {
+        const mb = w.getBounds();
+        return {
+          name: maskNames[idx] || `mask${idx}`,
+          bounds: { x: mb.x, y: mb.y, width: mb.width, height: mb.height },
+        };
+      });
+    }
+
+    const diagnostics = {
+      timestamp: new Date().toISOString(),
+      app: {
+        name: "No Frills Focus",
+        version: app.getVersion(),
+      },
+      electron: {
+        version: process.versions.electron,
+        chrome: process.versions.chrome,
+      },
+      platform: {
+        os: process.platform,
+        arch: process.arch,
+      },
+      display: {
+        primary: {
+          id: primaryDisplay.id,
+          bounds: primaryDisplay.bounds,
+          workArea: primaryDisplay.workArea,
+        },
+        current: {
+          id: display.id,
+          bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+          workArea: { x: work.x, y: work.y, width: work.width, height: work.height },
+        },
+      },
+      computed: {
+        menuBarH,
+        capH: CAP_H,
+      },
+      picker: {
+        htmlPath: pickerHtmlPath,
+        bounds: pickerBounds,
+      },
+      masks: maskBounds,
+      session: session ? {
+        app: session.selectedApp,
+        mode: session.mode,
+        targetBounds: session.targetBounds,
+      } : null,
+    };
+
+    // Write to file
+    const userData = app.getPath("userData");
+    const diagPath = path.join(userData, "diagnostics.json");
+    fs.writeFileSync(diagPath, JSON.stringify(diagnostics, null, 2), "utf8");
+    log(`[DIAGNOSTICS] written to ${diagPath}`);
+
+    return { ok: true, diagnostics, path: diagPath };
+  } catch (e) {
+    log(`[DIAGNOSTICS] error: ${e?.message || e}`);
+    return { ok: false, error: e?.message || String(e) };
+  }
 });
 
 /**
