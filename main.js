@@ -16,6 +16,17 @@ function nffLog(...args) {
   } catch (_) {}
 }
 
+/**
+ * Apply menu bar suppression to a window at multiple lifecycle stages.
+ * Addresses macOS hover-reveal and auto-show behaviors.
+ */
+function applyMenuBarSuppression(win) {
+  if (!win) return;
+  try { win.setAutoHideMenuBar(true); } catch {}
+  try { win.setMenuBarVisibility(false); } catch {}
+  nffLog("[MENUBAR] suppression applied to window");
+}
+
 let pickerWin = null;
 let maskWins = [];
 let cornerWins = null;
@@ -422,6 +433,7 @@ function createCornerPatches(opening) {
       hasShadow: false,
       backgroundColor: "#00000000",
       show: false,
+      autoHideMenuBar: true,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -429,17 +441,29 @@ function createCornerPatches(opening) {
       }
     });
 
+    // Apply menu bar suppression immediately after creation
+    applyMenuBarSuppression(w);
+
     // Critical: never take focus or intercept clicks
     try { w.setIgnoreMouseEvents(true, { forward: true }); } catch {}
 
     const url = `file://${path.join(__dirname, "renderer", "corner.html")}?corner=${corner}&c=${encodeURIComponent(MASK_COLOR)}&r=${CORNER_RADIUS_PX}`;
     w.loadURL(url);
 
+    // Apply menu bar suppression after load
+    w.webContents.on("did-finish-load", () => {
+      applyMenuBarSuppression(w);
+    });
+
     // Match mask tier
     try { w.setAlwaysOnTop(true, "screen-saver"); } catch {}
 
     w.once("ready-to-show", () => {
+      // Apply menu bar suppression before show
+      applyMenuBarSuppression(w);
       try { w.showInactive(); } catch {}
+      // Apply again after show
+      applyMenuBarSuppression(w);
     });
 
     return w;
@@ -622,11 +646,17 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
       },
     });
 
+    // Apply menu bar suppression immediately after creation
+    applyMenuBarSuppression(w);
+
     // Prevent mask from ever becoming key/main window
     w.setFocusable(false);
     w.setAlwaysOnTop(true, "screen-saver");
     w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     try { w.setIgnoreMouseEvents(false); } catch {}
+    
+    // Apply menu bar suppression before any focus management
+    applyMenuBarSuppression(w);
     
     // Ensure mask never becomes key window
     w.on('focus', () => w.blur());
@@ -641,15 +671,19 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
 
     // Phase 1: after load
     w.webContents.on("did-finish-load", () => {
+      applyMenuBarSuppression(w);
       assertTopmost();
       // one extra tick after load
       setTimeout(assertTopmost, 50);
     });
 
     w.once("ready-to-show", () => {
+      // Apply menu bar suppression before show
+      applyMenuBarSuppression(w);
       try { w.show(); } catch {}
 
-      // Phase 2: after show
+      // Phase 2: after show - apply again
+      applyMenuBarSuppression(w);
       assertTopmost();
       // Phase 3: compositor tick
       setTimeout(assertTopmost, 50);
@@ -662,6 +696,9 @@ function createMaskWindows(_displayBoundsIgnored, opening) {
 
     // Hard-set bounds immediately too (same as your current behavior)
     try { w.setBounds(bounds, false); } catch {}
+    
+    // Final suppression assertion before returning
+    applyMenuBarSuppression(w);
 
     return w;
   }
@@ -786,6 +823,9 @@ function createPermissionModal({ onOpenSettings, onRecheck, onTimeout }) {
       sandbox: true,
     },
   });
+
+  // Apply menu bar suppression immediately after creation
+  applyMenuBarSuppression(modal);
 
   const html = `<!doctype html>
 <html>
@@ -948,14 +988,21 @@ function createPermissionModal({ onOpenSettings, onRecheck, onTimeout }) {
 
   modal.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
 
+  // Apply menu bar suppression after load
+  modal.webContents.on("did-finish-load", () => {
+    applyMenuBarSuppression(modal);
+  });
+
   // Helper: set modal to BLOCKING state (always on top, blocks everything)
   const setBlocking = () => {
     try { modal.setAlwaysOnTop(true, "screen-saver"); } catch {}
+    applyMenuBarSuppression(modal);
   };
 
   // Helper: set modal to PENDING state (visible but not on top, allows system settings to come forward)
   const setPending = () => {
     try { modal.setAlwaysOnTop(false); } catch {}
+    applyMenuBarSuppression(modal);
   };
 
   // Handle the three pseudo-links without exposing Node in the renderer
@@ -984,7 +1031,13 @@ function createPermissionModal({ onOpenSettings, onRecheck, onTimeout }) {
     }
   });
 
-  modal.once("ready-to-show", () => modal.show());
+  modal.once("ready-to-show", () => {
+    // Apply menu bar suppression before show
+    applyMenuBarSuppression(modal);
+    modal.show();
+    // Apply again after show
+    applyMenuBarSuppression(modal);
+  });
 
   return { modal, setBlocking, setPending };
 }
@@ -1032,12 +1085,24 @@ function createPickerWindow() {
     },
   });
 
+  // Apply menu bar suppression immediately after creation
+  applyMenuBarSuppression(pickerWin);
+
   pickerWin.loadFile(path.join(__dirname, "renderer", "index.html"));
   if (DEBUG.devtools) pickerWin.webContents.openDevTools({ mode: "detach" });
 
+  // Apply menu bar suppression after page load
+  pickerWin.webContents.on("did-finish-load", () => {
+    applyMenuBarSuppression(pickerWin);
+  });
+
   pickerWin.once("ready-to-show", () => {
+    // Apply menu bar suppression before show
+    applyMenuBarSuppression(pickerWin);
     pickerWin.show();
     pickerWin.focus();
+    // Apply again after show
+    applyMenuBarSuppression(pickerWin);
   });
 
   pickerWin.on("closed", () => {
