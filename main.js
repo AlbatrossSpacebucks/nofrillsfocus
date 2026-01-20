@@ -1664,9 +1664,6 @@ ipcMain.handle("diagnostics:gather", async () => {
   }
 });
 
-app.on("activate", () => requestReassert("app:activate"));
-screen.on("display-metrics-changed", () => requestReassert("screen:metrics"));
-
 /**
  * Boot
  */
@@ -1674,6 +1671,9 @@ app.whenReady().then(async () => {
   log("[BOOT] __dirname =", __dirname);
   log("[BOOT] preload =", path.join(__dirname, "preload.js"));
   log("[BOOT] index   =", path.join(__dirname, "renderer", "index.html"));
+
+  app.on("activate", () => requestReassert("app:activate"));
+  screen.on("display-metrics-changed", () => requestReassert("screen:metrics"));
 
   // Check accessibility permission first
   const hasPermission = await checkAccessibilityPermission();
