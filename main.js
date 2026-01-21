@@ -1198,6 +1198,8 @@ function createPickerWindow() {
   // Apply menu bar suppression after page load
   pickerWin.webContents.on("did-finish-load", () => {
     applyMenuBarSuppression(pickerWin);
+    // Signal to renderer that app is ready (safe for IPC calls that need screen API)
+    pickerWin.webContents.send("app:ready");
   });
 
   pickerWin.once("ready-to-show", () => {
@@ -1261,6 +1263,10 @@ async function startSession(selectedApp, durationMin) {
 
   log(`[SESSION] start: selectedApp="${selectedApp}" durationMin=${durationMin} mode=${dur.mode}`);
 
+  // Capture diagnostics on session start
+  const diagStart = buildDiagnosticsObject("session:start");
+  if (diagStart) writeDiagnosticsSnapshot(diagStart);
+
   nffLog("[STEP] before activate target app", String(selectedApp));
   await activateApp(selectedApp);
   nffLog("[STEP] after activate target app");
@@ -1268,6 +1274,9 @@ async function startSession(selectedApp, durationMin) {
   const hasWin = await appHasWindows(selectedApp);
   if (!hasWin) {
     log(`[SESSION] abort: "${selectedApp}" has no open windows`);
+    // Capture diagnostics on session abort
+    const diagAbort = buildDiagnosticsObject("session:abort");
+    if (diagAbort) writeDiagnosticsSnapshot(diagAbort);
     session = null;
     return { ok: false, error: "no-windows" };
   }
@@ -1438,6 +1447,10 @@ async function endSession(reason = "manual") {
 
   log(`[SESSION] end: reason=${reason} selectedApp="${session.selectedApp}"`);
 
+  // Capture diagnostics on session end (before clearing session)
+  const diagEnd = buildDiagnosticsObject(`session:end:${reason}`);
+  if (diagEnd) writeDiagnosticsSnapshot(diagEnd);
+
   lastEndReason = reason;
 
   session = null;
@@ -1578,8 +1591,25 @@ ipcMain.handle("accessibility:check", async () => {
   return await checkAccessibilityPermission();
 });
 
-ipcMain.handle("diagnostics:gather", async () => {
+/**
+ * Build diagnostics object with current state
+ * Gate: only accesses screen API after app is ready
+ */
+function buildDiagnosticsObject(event = null) {
   try {
+    // Guard: screen API not available until app is ready
+    if (!app.isReady()) {
+      log(`[DIAGNOSTICS] buildDiagnosticsObject called before app ready`);
+      return {
+        ok: false,
+        code: "APP_NOT_READY",
+        ts: Date.now(),
+        event,
+        note: "buildDiagnosticsObject called before app ready; screen unavailable"
+      };
+    }
+
+    // Safe: only access screen after ready check
     const cursorPoint = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursorPoint);
     const primaryDisplay = screen.getPrimaryDisplay();
@@ -1611,6 +1641,7 @@ ipcMain.handle("diagnostics:gather", async () => {
 
     const diagnostics = {
       timestamp: new Date().toISOString(),
+      event: event || undefined,  // omit if not provided
       app: {
         name: "No Frills Focus",
         version: app.getVersion(),
@@ -1651,21 +1682,123 @@ ipcMain.handle("diagnostics:gather", async () => {
       } : null,
     };
 
-    // Write to file
-    const userData = app.getPath("userData");
-    const diagPath = path.join(userData, "diagnostics.json");
-    fs.writeFileSync(diagPath, JSON.stringify(diagnostics, null, 2), "utf8");
-    log(`[DIAGNOSTICS] written to ${diagPath}`);
-
-    return { ok: true, diagnostics, path: diagPath };
+    return diagnostics;
   } catch (e) {
-    log(`[DIAGNOSTICS] error: ${e?.message || e}`);
+    log(`[DIAGNOSTICS] buildDiagnosticsObject error: ${e?.message || e}`);
+    return null;
+  }
+}
+
+/**
+ * Write diagnostics to timestamped snapshot file
+ * Maintains history in ~/Library/Application Support/No Frills Focus/diagnostics/
+ * Keeps only the most recent 25 snapshots (deletes older ones)
+ */
+function writeDiagnosticsSnapshot(diagnostics, event = null) {
+  try {
+    const userData = app.getPath("userData");
+    const diagDir = path.join(userData, "diagnostics");
+    
+    // Create diagnostics directory if needed
+    if (!fs.existsSync(diagDir)) {
+      fs.mkdirSync(diagDir, { recursive: true });
+    }
+
+    // Add event if provided
+    if (event && !diagnostics.event) {
+      diagnostics.event = event;
+    }
+
+    // Write timestamped snapshot: diag-YYYYMMDD-HHMMSS.json
+    const now = new Date();
+    const yyyymmdd = now.toISOString().slice(0, 10).replace(/-/g, "");
+    const hhmmss = now.toISOString().slice(11, 19).replace(/:/g, "");
+    const timestamp = `${yyyymmdd}-${hhmmss}`;
+    const snapshotPath = path.join(diagDir, `diag-${timestamp}.json`);
+    
+    fs.writeFileSync(snapshotPath, JSON.stringify(diagnostics, null, 2), "utf8");
+
+    // Also write diagnostics-latest.json
+    const latestPath = path.join(diagDir, "diagnostics-latest.json");
+    fs.writeFileSync(latestPath, JSON.stringify(diagnostics, null, 2), "utf8");
+    
+    log(`[DIAGNOSTICS] snapshot ok -> ${snapshotPath} (latest -> diagnostics-latest.json)`);
+
+    // Clean up old snapshots (keep only most recent 25)
+    try {
+      const files = fs.readdirSync(diagDir)
+        .filter(f => f.startsWith("diag-") && f.endsWith(".json"))
+        .sort()
+        .reverse(); // newest first
+
+      if (files.length > 25) {
+        const toDelete = files.slice(25);
+        for (const f of toDelete) {
+          fs.unlinkSync(path.join(diagDir, f));
+        }
+        log(`[DIAGNOSTICS] cleaned up ${toDelete.length} old snapshots`);
+      }
+
+      // Return the last 5 filenames for reference
+      const recentFiles = files.slice(0, 5);
+      return { ok: true, path: snapshotPath, recent: recentFiles };
+    } catch (e) {
+      log(`[DIAGNOSTICS] cleanup error: ${e?.message || e}`);
+      return { ok: true, path: snapshotPath, recent: [] };
+    }
+  } catch (e) {
+    log(`[DIAGNOSTICS] writeDiagnosticsSnapshot error: ${e?.message || e}`);
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+ipcMain.handle("diagnostics:gather", async () => {
+  // If called a hair early, wait briefly for ready.
+  if (!app.isReady()) {
+    try {
+      await Promise.race([
+        app.whenReady(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("READY_TIMEOUT")), 750))
+      ]);
+    } catch {
+      return {
+        ok: false,
+        code: "APP_NOT_READY",
+        ts: Date.now(),
+        note: "Diagnostics requested before app 'ready'. Try again shortly.",
+      };
+    }
+  }
+
+  try {
+    const diagnostics = buildDiagnosticsObject("ipc:diagnostics:gather");
+    if (!diagnostics) {
+      return { ok: false, error: "failed to build diagnostics" };
+    }
+
+    const result = writeDiagnosticsSnapshot(diagnostics);
+    if (!result.ok) {
+      return result;
+    }
+
+    const userData = app.getPath("userData");
+    const diagDir = path.join(userData, "diagnostics");
+    const latestPath = path.join(diagDir, "diagnostics-latest.json");
+
+    return {
+      ok: true,
+      diagnostics,
+      path: result.path,
+      latestPath,
+      recent: result.recent || [],
+    };
+  } catch (e) {
+    log(`[DIAGNOSTICS] gather error: ${e?.message || e}`);
     return { ok: false, error: e?.message || String(e) };
   }
 });
 
 app.on("activate", () => requestReassert("app:activate"));
-screen.on("display-metrics-changed", () => requestReassert("screen:metrics"));
 
 /**
  * Boot
@@ -1674,6 +1807,8 @@ app.whenReady().then(async () => {
   log("[BOOT] __dirname =", __dirname);
   log("[BOOT] preload =", path.join(__dirname, "preload.js"));
   log("[BOOT] index   =", path.join(__dirname, "renderer", "index.html"));
+
+  screen.on("display-metrics-changed", () => requestReassert("screen:metrics"));
 
   // Check accessibility permission first
   const hasPermission = await checkAccessibilityPermission();
