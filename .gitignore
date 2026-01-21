@@ -4,10 +4,7 @@ dmg/
 *.dmg
 .DS_Store
 *.log
-node_modules/
-dist/
-dmg/
-*.dmg
-.DS_Store
-
 build/
+
+# Environment variables (credentials)
+.env

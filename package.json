@@ -1,6 +1,6 @@
 {
   "name": "no-frills-focus",
-  "version": "0.1.11",
+  "version": "0.1.13",
   "description": "A commitment enforcement tool for macOS",
   "main": "main.js",
   "author": "No Frills Focus",
@@ -11,12 +11,16 @@
     "dist:mac": "electron-builder --mac"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.1.0",
+    "dotenv": "^16.6.1",
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.nofrillsfocus.app",
     "productName": "No Frills Focus",
+    "afterSign": "scripts/notarize.js",
+    "icon": "build/icons/icon.icns",
     "files": [
       "**/*",
       "!dist",
