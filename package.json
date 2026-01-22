@@ -1,6 +1,6 @@
 {
   "name": "no-frills-focus",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "A commitment enforcement tool for macOS",
   "main": "main.js",
   "author": "No Frills Focus",
@@ -33,6 +33,9 @@
       "category": "public.app-category.productivity",
       "target": [
         "zip"
+      ],
+      "extraResources": [
+        "README.md"
       ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false
