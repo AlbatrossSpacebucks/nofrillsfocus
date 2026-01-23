@@ -4,25 +4,341 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>No Frills Focus</title>
-  <meta name="description" content="No Frills Focus — a commitment enforcement tool for macOS." />
+  <meta name="description" content="A digital minimalism environment for macOS. Choose any app or document. Everything else disappears." />
+
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:48px;max-width:720px}
-    a.button{display:inline-block;padding:12px 16px;border:1px solid #111;border-radius:10px;text-decoration:none;color:#111;font-weight:600}
-    .muted{opacity:.72}
-    hr{border:none;border-top:1px solid rgba(0,0,0,.12);margin:28px 0}
+    :root{
+      --bg: #DEDEDE;         /* locked */
+      --panel: #6F6F6F;      /* locked */
+      --panel-deep: #5A5A5A; /* art stage */
+      --text: #FFFFFF;
+      --muted: rgba(255,255,255,.78);
+      --hair: rgba(255,255,255,.16);
+      --radius: 12px;        /* locked */
+      --shadow: 0 12px 30px rgba(0,0,0,.35); /* locked */
+    }
+
+    *{ box-sizing: border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Top-weighted centering */
+    .frame{
+      min-height: 100%;
+      display:flex;
+      justify-content:center;
+      padding: 62px 20px 82px;
+    }
+
+    .panel{
+      width: min(920px, 100%);
+      background: var(--panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 44px 44px 40px;
+    }
+
+    @media (max-width: 640px){
+      .frame{ padding: 42px 16px 64px; }
+      .panel{ padding: 28px 22px 26px; }
+    }
+
+    h1{
+      margin: 0 0 10px;
+      font-size: 52px;
+      line-height: 1.03;
+      letter-spacing: -0.02em;
+      text-align: center;
+    }
+
+    .sub{
+      margin: 0 auto 16px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.55;
+      max-width: 68ch;
+      text-align: center;
+    }
+
+    .tagline{
+      margin: 0 0 18px;
+      font-size: 22px;
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+      text-align: center;
+    }
+
+    .hero{
+      display:flex;
+      gap: 18px;
+      align-items:center;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 18px 0 18px;
+    }
+
+    .button{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,.20);
+      background: rgba(255,255,255,.14);
+      color: var(--text);
+      font-weight: 650;
+      letter-spacing: .01em;
+      user-select:none;
+      white-space: nowrap;
+    }
+    .button:hover{ background: rgba(255,255,255,.18); }
+    .button:active{ transform: translateY(1px); }
+
+    .hero-note{
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .rule{
+      height: 1px;
+      background: var(--hair);
+      border: 0;
+      margin: 26px 0;
+    }
+
+    .art-wrap{
+      margin: 22px -44px 40px;
+      padding: 40px 44px 46px;
+      background: var(--panel-deep);
+      border-top: 1px solid rgba(255,255,255,.10);
+      border-bottom: 1px solid rgba(255,255,255,.10);
+    }
+
+    @media (max-width: 640px){
+      .art-wrap{
+        margin-left: -22px;
+        margin-right: -22px;
+        padding: 28px 22px 30px;
+      }
+    }
+
+    .art-image{
+      display:block;
+      width: 100%;
+      max-width: 860px;
+      height: auto;
+      margin: 0 auto;
+      border-radius: 12px;
+      border: none;
+      background: transparent;
+    }
+
+    .section{
+      padding: 8px 0;
+    }
+
+    /* Only keep the bolded headers (as requested) */
+    .section h2{
+      margin: 0 0 12px;
+      font-size: 34px;
+      line-height: 1.12;
+      letter-spacing: -0.01em;
+    }
+
+    p{
+      margin: 0 0 12px;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--text);
+      max-width: 72ch;
+    }
+
+    .bullets{
+      margin: 14px 0 0;
+      padding-left: 22px;
+      list-style: disc;
+      max-width: 72ch;
+    }
+
+    .bullets li{
+      margin: 7px 0;
+      font-size: 17px;
+      line-height: 1.6;
+      color: var(--text);
+    }
+
+    .bullets li strong{ font-weight: 700; }
+
+    .fine{
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--muted);
+      margin-top: 12px;
+    }
+
+    /* Accessible focus */
+    a:focus{
+      outline: 2px solid rgba(255,255,255,.62);
+      outline-offset: 3px;
+      border-radius: 12px;
+    }
+
+    /* Small “breathing room” between blocks without feeling segmented */
+    .section + .rule{ margin-top: 28px; }
+
+    /* Bottom copyright */
+.copyright{
+  margin-top: 40px;
+  padding-bottom: 8px;
+  text-align: center;
+  font-size: 0.7rem;
+  opacity: 0.4;
+  letter-spacing: 0.02em;
+}
+    /* Bottom CTA stack + center */
+#download-bottom {
+  text-align: center;
+}
+
+#download-bottom .hero {
+  flex-direction: column;
+  gap: 14px;
+}
+
+#download-bottom{
+  position: relative;
+  padding-bottom: 56px;
+}
+
+#download-bottom .copyright{
+  position: absolute;
+  left: 44px;
+  bottom: 18px;
+  font-size: 0.7rem;
+  opacity: 0.35;
+  letter-spacing: 0.02em;
+  margin: 0;
+  pointer-events: none;
+}
+    #download-bottom .compat{
+  margin: 0;
+  text-align: center;
+}
+
+
+
+
   </style>
 </head>
+
 <body>
-  <h1>No Frills Focus</h1>
-  <p class="muted">A commitment enforcement tool for macOS.</p>
+  <main class="frame">
+    <article class="panel" role="region" aria-label="No Frills Focus landing">
 
-  <p><a class="button" href="https://albatross75.gumroad.com/l/nofrillsfocus">Download</a></p>
+      <h1>No Frills Focus</h1>
+      <p class="sub">A digital minimalism environment for work &amp; study.</p>
+      
+<div class="hero" aria-label="Primary download">
+  <a class="button" href="https://albatross75.gumroad.com/l/nofrillsfocus">[▢] Download for macOS 11+</a>
+</div>
 
-  <hr>
+<div class="art-wrap">
+  <!-- NOTE: make sure the filename + extension matches what’s in /assets (case-sensitive) -->
+  <img class="art-image" src="assets/illustration2.png" alt="No Frills Focus illustration" />
+</div>
 
-  <p class="muted">
-    Verification & release integrity:
-    <a href="https://github.com/AlbatrossSpacebucks/nofrillsfocus">checksums & provenance</a>.
-  </p>
+<hr class="rule" />
+
+<section class="section" id="what-it-is">
+  <h2><strong>Simplicity as a tool.</strong></h2>
+  <p>No Frills Focus masks everything on your screen except what you’re working on. Everything else gets hidden from view.</p>
+</section>
+
+<hr class="rule" />
+
+<section class="section" id="how-it-works">
+  <h2><strong>Simple to use.</strong></h2>
+  <ul class="bullets">
+    <li>Open <strong>any app or document</strong> you want to work in — writing, screenwriting, design, code, web.</li>
+    <li>Choose a session.</li>
+    <li>Your work appears inside a single, fixed macOS window.</li>
+    <li>Everything else fades behind a neutral backdrop.</li>
+  </ul>
+  <ul class="bullets">
+    <li>Works with the apps you already trust.</li>
+    <li>No proprietary editor or workflows to learn.</li>
+    <li>No file juggling or porting.</li>
+    <li>No features.</li>
+    <li>No b.s.</li>
+  </ul>
+</section>
+
+<hr class="rule" />
+
+<section class="section" id="why-this-helps">
+  <h2><strong>A simplified environment → surprising freedom.</strong></h2>
+  <p>When visual drift points disappear, your eyes stop scanning for exits, and your mind stops negotiating.</p>
+  <p>Time loosens its grip.</p>
+  <p>Attention steadies.</p>
+  <p>Longer work sessions start to feel second nature.</p>
+</section>
+
+<hr class="rule" />
+
+<section class="section" id="design-philosophy">
+  <h2><strong>Work simply → stay present.</strong></h2>
+  <p>No Frills Focus isn’t about productivity hacks or rigid enforcement. It simply makes the choice you’ve already made to work more deliberate and purposeful.</p>
+  <p>No visible timer, no countdown anxiety, no score‑keeping — just the simplicity and calm of visual constraint.</p>
+</section>
+
+<hr class="rule" />
+
+<section class="section" id="getting-out">
+  <h2><strong>Frictionless.</strong></h2>
+  <p>Exit your session at any time. Nothing is locked. Your screen returns to normal.</p>
+  <ul class="bullets">
+    <li><strong>Cmd + Shift + X</strong> — Exit session</li>
+    <li><strong>Cmd + Shift + Z</strong> — Exit app</li>
+  </ul>
+</section>
+
+<hr class="rule" />
+
+<section class="section" id="privacy">
+  <h2><strong>We don’t collect data.</strong></h2>
+  <p>The app works entirely offline. Nothing on your desktop is moved, changed, or rearranged. No accounts. No subscriptions. Purchase once. Future updates included.</p>
+</section>
+
+<hr class="rule" />
+
+<!-- Secondary CTA + compatibility note + copyright -->
+<section class="section" id="download-bottom" aria-label="Secondary download">
+  <h2><strong>Get started.</strong></h2>
+
+  <div class="hero hero-bottom">
+    <a class="button" href="https://albatross75.gumroad.com/l/nofrillsfocus">
+      [▢] Download for macOS 11+
+    </a>
+    <p class="compat">
+      Desktop experience recommended. Not intended for mobile use.
+    </p>
+  </div>
+
+  <p class="copyright">© 2026 No Frills Focus</p>
+</section>
+
+
+</article>
+</main>
 </body>
 </html>
