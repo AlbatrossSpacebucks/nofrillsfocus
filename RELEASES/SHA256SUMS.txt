@@ -1,1 +1,6 @@
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  RELEASES/SHA256SUMS.txt
+
+## 0.1.14 — 2026-01-23
+File: No Frills Focus-0.1.14-arm64-mac.zip
+SHA256: <HASH>
+Distribution: Gumroad (paid)
